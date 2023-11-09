@@ -7,7 +7,7 @@ import torch
 
 args = {
     'C': 2,
-    'num_searches': 100,
+    'num_searches': 600,
     'num_iterations': 3,
     'num_selfPlay_iterations': 500,
     'num_epochs': 4,
@@ -22,7 +22,7 @@ def main():
     game = ConnectFour()
     player = 1
     model = ResNet(game, 9, 128, device)
-    # model.load_state_dict(torch.load('models/model_2.pt', map_location=device))
+    model.load_state_dict(torch.load('models/model_7_ConnectFour.pt', map_location=device))
     model.eval() 
 
     mcts = MCTS(game, args, model)
