@@ -1,11 +1,14 @@
-from mcts_torch import MCTS
+from mcts_alpha import MCTS
 from tictactoe import TicTacToe
+from connect_four import ConnectFour
 from model import ResNet
 import torch
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
 import random
+
+torch.manual_seed(0)
 
 class AlphaZero:
     def __init__(self, model, optimizer, game, args) -> None:
@@ -26,7 +29,9 @@ class AlphaZero:
 
             memory.append((neutral_state, action_probs, player))
 
-            action = np.random.choice(self.game.action_size, p=action_probs)
+            temperature_action_probs = action_probs ** (1 / self.args["temperature"])
+            temperature_action_probs /= np.sum(temperature_action_probs)
+            action = np.random.choice(self.game.action_size, p=temperature_action_probs)
 
             state = self.game.get_next_state(state, action, player)
 
@@ -53,9 +58,9 @@ class AlphaZero:
 
             state, policy_targets, value_targets = np.array(state), np.array(policy_targets), np.array(value_targets).reshape(-1, 1)
 
-            state = torch.tensor(state, dtype=torch.float32)
-            policy_targets = torch.tensor(policy_targets, dtype=torch.float32)
-            value_targets = torch.tensor(value_targets, dtype=torch.float32)
+            state = torch.tensor(state, dtype=torch.float32, device=self.model.device)
+            policy_targets = torch.tensor(policy_targets, dtype=torch.float32, device=self.model.device)
+            value_targets = torch.tensor(value_targets, dtype=torch.float32, device=self.model.device)
 
             out_policy, out_value = self.model(state)
 
@@ -82,25 +87,29 @@ class AlphaZero:
             for epoch in tqdm(range(self.args["num_epochs"])):
                 self.train(memory)
 
-            torch.save(self.model.state_dict(), f"models/model_{iteration}.pt") 
-            torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}.pt") 
+            torch.save(self.model.state_dict(), f"models/model_{iteration}_{self.game}.pt") 
+            torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}_{self.game}.pt") 
 
 if __name__=="__main__":
-    tictactoe = TicTacToe()
+    game = ConnectFour()
 
-    model = ResNet(tictactoe, 4, 64)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = ResNet(game, 9, 128, device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
     args = {
         'C': 2,
-        'num_searches': 60,
-        'num_iterations': 30,
+        'num_searches': 600,
+        'num_iterations': 8,
         'num_selfPlay_iterations': 500,
-        'num_epochs': 8,
-        'batch_size': 64,
+        'num_epochs': 4,
+        'batch_size': 128,
+        'temperature': 1.25,
+        'dirichlet_epsilon': 0.25,
+        'dirichlet_alpha': 0.3  
     }
 
-    alphaZero = AlphaZero(model, optimizer, tictactoe, args)
+    alphaZero = AlphaZero(model, optimizer, game, args)
 
     alphaZero.learn()

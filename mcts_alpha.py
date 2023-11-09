@@ -10,7 +10,21 @@ class MCTS:
 
     @torch.no_grad()
     def search(self, state):
-        root = Node(self.game, self.args, state)
+        root = Node(self.game, self.args, state, visit_count = 1)
+
+        policy, value = self.model(
+                    torch.tensor(self.game.get_encoded_state(state), device=self.model.device).unsqueeze(0)
+                )
+        policy = torch.softmax(policy, axis=1).squeeze(0).cpu().numpy()
+        
+        policy = (1 - self.args["dirichlet_epsilon"]) * policy + self.args["dirichlet_epsilon"] \
+            * np.random.dirichlet([self.args["dirichlet_alpha"]] * self.game.action_size)
+        
+        valid_moves = self.game.get_valid_moves(state)
+        policy *= valid_moves
+        policy /= np.sum(policy)
+
+        root.expand(policy)
 
         for search in range(self.args['num_searches']):
             node = root
@@ -23,7 +37,7 @@ class MCTS:
             
             if not is_terminated:
                 policy, value = self.model(
-                    torch.tensor(self.game.get_encoded_state(node.state)).unsqueeze(0)
+                    torch.tensor(self.game.get_encoded_state(node.state), device=self.model.device).unsqueeze(0)
                 )
                 policy = torch.softmax(policy, axis=1).squeeze(0).cpu().numpy()
                 valid_moves = self.game.get_valid_moves(node.state)
@@ -46,17 +60,17 @@ class MCTS:
 
 
 class Node:
-    def __init__(self, game, args, state, parent=None, action_taken=None, prior=0) -> None:
+    def __init__(self, game, args, state, parent=None, action_taken=None, prior=0, visit_count = 0) -> None:
         self.game = game
         self.args = args
         self.state = state
         self.parent = parent
         self.action_taken = action_taken
-        self.prior = 0 
+        self.prior = prior 
 
         self.children = []
 
-        self.visit_count = 0
+        self.visit_count = visit_count
         self.value_sum = 0
 
     def is_fully_expanded(self):

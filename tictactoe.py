@@ -6,6 +6,9 @@ class TicTacToe:
         self.collumn_count = 3
         self.action_size = self.collumn_count * self.row_count
 
+    def __repr__(self) -> str:
+        return "TicTacToe"
+
     def get_initial_state(self):
         return np.zeros((self.row_count, self.collumn_count))
 
