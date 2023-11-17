@@ -7,16 +7,28 @@ import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
 import random
+import wandb
+import time
 
 torch.manual_seed(0)
 
 class AlphaZero:
-    def __init__(self, model, optimizer, game, args) -> None:
+    def __init__(self, model, optimizer, game, args, log_mode = False) -> None:
         self.model = model
         self.optimizer = optimizer
         self.game = game
         self.args = args
         self.mcts = MCTS(game, args, model)
+        self.init_time = None
+
+        if log_mode:
+            run = wandb.init(
+                # Set the project where this run will be logged
+                project="AlhpaZero",
+                name=str(game),
+                # Track hyperparameters and run metadata
+                config=args
+                )
 
     def selfPlay(self):
         memory = []
@@ -75,6 +87,7 @@ class AlphaZero:
 
 
     def learn(self):
+        self.init_time = time.time()
         for iteration in range(self.args["num_iterations"]):
             print(f"Iteration number {iteration}")
             memory = []
@@ -91,12 +104,24 @@ class AlphaZero:
             torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}_{self.game}.pt") 
 
 class AlphaZeroParallel:
-    def __init__(self, model, optimizer, game, args) -> None:
+    def __init__(self, model, optimizer, game, args, log_mode = False) -> None:
         self.model = model
         self.optimizer = optimizer
         self.game = game
         self.args = args
         self.mcts = MCTSParallel(game, args, model)
+        self.log_mode = log_mode
+        self.init_time = None
+
+        if log_mode:
+            run = wandb.init(
+                # Set the project where this run will be logged
+                project="AlhpaZero",
+                name=str(game),
+                # Track hyperparameters and run metadata
+                config=args
+                )
+
 
     def selfPlay(self):
         return_memory = []
@@ -165,9 +190,17 @@ class AlphaZeroParallel:
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+            if self.log_mode:
+                wandb.log({
+                    "loss": loss.detach().cpu().item(),
+                    "policy_loss": policy_loss.detach().cpu().item(),
+                    "value_loss": policy_loss.detach().cpu().item(),
+                    "time": (time.time() - self.init_time) / 60
+                        })
     
 
     def learn(self):
+        self.init_time = time.time()
         for iteration in range(self.args["num_iterations"]):
             print(f"Iteration number {iteration}")
             memory = []
@@ -199,18 +232,18 @@ if __name__=="__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
     args = {
-        'C': 2,
-        'num_searches': 600,
-        'num_iterations': 8,
+        'C': 3,
+        'num_searches': 1200,
+        'num_iterations': 20,
         'num_selfPlay_iterations': 500,
-        'num_parallel_games': 100,
-        'num_epochs': 4,
+        'num_parallel_games': 50,
+        'num_epochs': 8,
         'batch_size': 128,
-        'temperature': 1.25,
+        'temperature': 2,
         'dirichlet_epsilon': 0.25,
-        'dirichlet_alpha': 0.3  
+        'dirichlet_alpha': 0.4  
     }
 
-    alphaZero = AlphaZeroParallel(model, optimizer, game, args)
+    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True)
 
     alphaZero.learn()
