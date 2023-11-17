@@ -9,6 +9,7 @@ from tqdm import tqdm
 import random
 import wandb
 import time
+import os
 
 torch.manual_seed(0)
 
@@ -213,6 +214,9 @@ class AlphaZeroParallel:
             for epoch in tqdm(range(self.args["num_epochs"])):
                 self.train(memory)
 
+            if not os.path.exists("models"):
+                os.mkdir("models")
+
             torch.save(self.model.state_dict(), f"models/model_{iteration}_{self.game}.pt") 
             torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}_{self.game}.pt") 
 
@@ -230,15 +234,15 @@ if __name__=="__main__":
     model = ResNet(game, 9, 128, device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
-
+    print(os.path.exists("models"))
     args = {
         'C': 3,
-        'num_searches': 1200,
+        'num_searches': 100,
         'num_iterations': 20,
-        'num_selfPlay_iterations': 500,
-        'num_parallel_games': 50,
+        'num_selfPlay_iterations': 6,
+        'num_parallel_games': 2,
         'num_epochs': 8,
-        'batch_size': 128,
+        'batch_size': 2,
         'temperature': 2,
         'dirichlet_epsilon': 0.25,
         'dirichlet_alpha': 0.4  
