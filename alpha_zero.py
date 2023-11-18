@@ -25,7 +25,7 @@ class AlphaZero:
         if log_mode:
             run = wandb.init(
                 # Set the project where this run will be logged
-                project="AlhpaZero",
+                project="AlphaZero",
                 name=str(game),
                 # Track hyperparameters and run metadata
                 config=args
