@@ -30,6 +30,8 @@ class AlphaZero:
                 # Track hyperparameters and run metadata
                 config=args
                 )
+            print(run.config)
+
 
     def selfPlay(self):
         memory = []
@@ -122,6 +124,9 @@ class AlphaZeroParallel:
                 # Track hyperparameters and run metadata
                 config=args
                 )
+            args = run.config
+        
+        print(args)
 
 
     def selfPlay(self):
@@ -173,6 +178,7 @@ class AlphaZeroParallel:
         random.shuffle(memory)
         for batchIdx in range(0, len(memory), self.args["batch_size"]):
             sample = memory[batchIdx:min(batchIdx+self.args["batch_size"], len(memory)-1)]
+
             state, policy_targets, value_targets = zip(*sample)
 
             state, policy_targets, value_targets = np.array(state), np.array(policy_targets), np.array(value_targets).reshape(-1, 1)
