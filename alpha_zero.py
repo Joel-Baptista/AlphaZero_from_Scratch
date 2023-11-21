@@ -110,14 +110,16 @@ class AlphaZero:
             torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}_{self.game}.pt") 
 
 class AlphaZeroParallel:
-    def __init__(self, model, optimizer, game, args, log_mode = False) -> None:
+    def __init__(self, model, optimizer, game, args, log_mode = False,  save_models=False) -> None:
         self.model = model
         self.optimizer = optimizer
         self.game = game
         self.args = args
         self.mcts = MCTSParallel(game, args, model)
         self.log_mode = log_mode
+        self.save_models = save_models
         self.init_time = None
+        self.log_iteration = 0
 
         if log_mode:
             run = wandb.init(
@@ -125,11 +127,11 @@ class AlphaZeroParallel:
                 project="AlphaZero",
                 name=str(game),
                 # Track hyperparameters and run metadata
-                config=args
+                config=self.args
                 )
-            args = run.config
+            self.args = run.config
         
-        print(args)
+        print(self.args)
 
 
     def selfPlay(self):
@@ -203,18 +205,62 @@ class AlphaZeroParallel:
             loss.backward()
             self.optimizer.step()
             if self.log_mode:
+                self.log_iteration += 1
                 wandb.log({
                     "loss": loss.detach().cpu().item(),
                     "policy_loss": policy_loss.detach().cpu().item(),
                     "value_loss": policy_loss.detach().cpu().item(),
                     "time": (time.time() - self.init_time) / 60
-                        })
+                        }, step=self.log_iteration)
     
+    def eval(self, memory):
+        random.shuffle(memory)
+        total_loss = 0
+        total_policy_loss = 0
+        total_value_loss = 0
+        iterations = 0
+        for batchIdx in range(0, len(memory), self.args["batch_size"]):
+            sample = memory[batchIdx:min(batchIdx+self.args["batch_size"], len(memory)-1)]
+            if len(sample)<2:
+                continue
+
+            state, policy_targets, value_targets = zip(*sample)
+
+            state, policy_targets, value_targets = np.array(state), np.array(policy_targets), np.array(value_targets).reshape(-1, 1)
+
+            state = torch.tensor(state, dtype=torch.float32, device=self.model.device)
+            policy_targets = torch.tensor(policy_targets, dtype=torch.float32, device=self.model.device)
+            value_targets = torch.tensor(value_targets, dtype=torch.float32, device=self.model.device)
+
+            out_policy, out_value = self.model(state)
+
+            policy_loss = F.cross_entropy(out_policy, policy_targets)
+            value_loss = F.mse_loss(out_value, value_targets)
+
+            loss = policy_loss + value_loss
+
+            total_loss += loss.detach().cpu().item()
+            total_policy_loss += policy_loss.detach().cpu().item()
+            total_value_loss += value_loss.detach().cpu().item()
+            iterations += 1
+        
+        val_loss = total_loss / iterations
+        val_policy_loss = total_policy_loss / iterations
+        val_value_loss = total_value_loss / iterations
+
+        print(f"Validation loss: {val_loss}, Policy Validation Loss: {val_policy_loss}, Value Validation Loss: {val_value_loss}")
+        if self.log_mode:
+            wandb.log({
+                "val_loss": val_loss,
+                "val_policy_loss": val_policy_loss,
+                "val_value_loss": val_value_loss }
+                , step=self.log_iteration)
 
     def learn(self):
         self.init_time = time.time()
         for iteration in range(self.args["num_iterations"]):
             print(f"Iteration number {iteration}")
+            print(self.args)
             memory = []
 
             self.model.eval()
@@ -225,11 +271,20 @@ class AlphaZeroParallel:
             for epoch in tqdm(range(self.args["num_epochs"])):
                 self.train(memory)
 
-            if not os.path.exists("models"):
-                os.mkdir("models")
+            self.model.eval()
+            val_memory = []
+            validation_iterations = self.args["num_selfPlay_iterations"] // (5 * self.args["num_parallel_games"])
+            if validation_iterations < 1: validation_iterations = 1
+            for selfPlay_iteration in tqdm(range(validation_iterations)):
+                val_memory += self.selfPlay()
+            self.eval(val_memory)
 
-            torch.save(self.model.state_dict(), f"models/model_{iteration}_{self.game}.pt") 
-            torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}_{self.game}.pt") 
+            if self.save_models:
+                if not os.path.exists("models"):
+                    os.mkdir("models")
+
+                torch.save(self.model.state_dict(), f"models/model_{iteration}_{self.game}.pt") 
+                torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}_{self.game}.pt") 
 
 class SPG:
     def __init__(self, game) -> None:
@@ -259,6 +314,6 @@ if __name__=="__main__":
         'dirichlet_alpha': 0.4  
     }
 
-    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True)
+    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=False)
 
     alphaZero.learn()
