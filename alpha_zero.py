@@ -258,6 +258,9 @@ class AlphaZeroParallel:
 
     def learn(self):
         self.init_time = time.time()
+        checkpoint_counter = self.args["num_iterations"] // 10
+        if checkpoint_counter < 1: checkpoint_counter = 1
+
         for iteration in range(self.args["num_iterations"]):
             print(f"Iteration number {iteration}")
             print(self.args)
@@ -279,7 +282,7 @@ class AlphaZeroParallel:
                 val_memory += self.selfPlay()
             self.eval(val_memory)
 
-            if self.save_models:
+            if self.save_models and iteration % checkpoint_counter == 0:
                 if not os.path.exists("models"):
                     os.mkdir("models")
 
@@ -297,23 +300,24 @@ if __name__=="__main__":
     game = ConnectFour()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
     model = ResNet(game, 9, 128, device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
     print(os.path.exists("models"))
     args = {
-        'C': 3,
-        'num_searches': 100,
-        'num_iterations': 20,
-        'num_selfPlay_iterations': 6,
-        'num_parallel_games': 2,
-        'num_epochs': 8,
-        'batch_size': 2,
-        'temperature': 2,
-        'dirichlet_epsilon': 0.25,
-        'dirichlet_alpha': 0.4  
+        'C': 5,
+        'num_searches': 4200,
+        'num_iterations': 40,
+        'num_selfPlay_iterations': 500,
+        'num_parallel_games': 250,
+        'num_epochs': 6,
+        'batch_size': 128,
+        'temperature': 0.2,
+        'dirichlet_epsilon': 0.5,
+        'dirichlet_alpha': 0.8  
     }
 
-    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=False)
+    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=True)
 
     alphaZero.learn()
