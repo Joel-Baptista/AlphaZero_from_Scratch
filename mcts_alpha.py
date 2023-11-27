@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import torch
+import time
 
 
 class MCTSParallel:
@@ -11,7 +12,7 @@ class MCTSParallel:
 
     @torch.no_grad()
     def search(self, states, spGames):
-
+        st = time.time()
         policy, _ = self.model(
                     torch.tensor(self.game.get_encoded_state(states), device=self.model.device)
                 )
@@ -20,6 +21,11 @@ class MCTSParallel:
         policy = (1 - self.args["dirichlet_epsilon"]) * policy + self.args["dirichlet_epsilon"] \
             * np.random.dirichlet([self.args["dirichlet_alpha"]] * self.game.action_size, size=policy.shape[0])
         
+        print(f"Inference time: {time.time() - st}")
+
+        policy = np.random.random((250, 7))
+        # print("Root Random Policy!")
+
         for i, spg in enumerate(spGames):
             spg_policy = policy[i]
             
@@ -30,7 +36,9 @@ class MCTSParallel:
             spg.root = Node(self.game, self.args, states[i], visit_count = 1)
 
             spg.root.expand(spg_policy)
-
+        # print("Roots Expanded!")
+        total_inference_time = 0
+        total_mapping_time = 0
         for search in range(self.args['num_searches']):
             for spg in spGames:
                 spg.node = None
@@ -49,13 +57,19 @@ class MCTSParallel:
             
             expandable_spGames = [mappingIdx for mappingIdx in range(len(spGames)) if spGames[mappingIdx].node is not None]
 
+            st = time.time()
             if len(expandable_spGames) > 0:
                 states = np.stack([spGames[mappingIdx].node.state for mappingIdx in expandable_spGames])
                 policy, value = self.model(
                     torch.tensor(self.game.get_encoded_state(states), device=self.model.device)
                 )
                 policy = torch.softmax(policy, axis=1).cpu().numpy()
-
+                # policy = np.random.random((250, 7))
+                # value = np.random.random(250)
+                # print("Expanded Random Policy!")
+            
+            total_inference_time += time.time() - st
+            st = time.time()
             for i, mappingIdx in enumerate(expandable_spGames):
                 node = spGames[mappingIdx].node
                 spg_policy = policy[i]
@@ -70,7 +84,12 @@ class MCTSParallel:
                 node.expand(spg_policy)
 
                 node.backpropagate(spg_value)
-      
+            total_mapping_time += time.time() - st
+            # print(f"Search {search} Complet")
+
+        print(f"Average inference time: {total_inference_time / search}")
+        print(f"Average mapping time: {total_mapping_time / search}")
+        print("-------------------------------------------")
         # action_probs = np.zeros(self.game.action_size)
         # for child in root.children:
         #     action_probs[child.action_taken] = child.visit_count

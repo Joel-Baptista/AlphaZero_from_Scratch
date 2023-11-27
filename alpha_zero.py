@@ -144,8 +144,11 @@ class AlphaZeroParallel:
             states = np.stack([spg.state for spg in spGames])
 
             neutral_states = self.game.change_prespective(states, player)
+            st = time.time()
+            print("Starting Search")
             self.mcts.search(neutral_states, spGames)
-
+            print(f"Search Time: {time.time() - st}")
+            st = time.time()
             for i in range(len(spGames))[::-1]:
                 spg = spGames[i]
                 action_probs = np.zeros(self.game.action_size)
@@ -173,8 +176,9 @@ class AlphaZeroParallel:
                             hist_outcome)
                         )
                     del spGames[i]
-            
-
+            print(f"Sorting data {time.time() - st}")
+            print(f"Memory size: {np.shape(return_memory)}")
+            print(f"Games Running: {len(spGames)}")
             player = self.game.get_opponent(player)
         
         return return_memory
@@ -318,6 +322,6 @@ if __name__=="__main__":
         'dirichlet_alpha': 0.8  
     }
 
-    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=True)
+    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=False)
 
     alphaZero.learn()
