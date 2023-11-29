@@ -21,9 +21,9 @@ class MCTSParallel:
         policy = (1 - self.args["dirichlet_epsilon"]) * policy + self.args["dirichlet_epsilon"] \
             * np.random.dirichlet([self.args["dirichlet_alpha"]] * self.game.action_size, size=policy.shape[0])
         
-        print(f"Inference time: {time.time() - st}")
+        # print(f"Inference time: {time.time() - st}")
 
-        policy = np.random.random((250, 7))
+        # policy = np.random.random((250, 7))
         # print("Root Random Policy!")
 
         for i, spg in enumerate(spGames):
@@ -39,7 +39,9 @@ class MCTSParallel:
         # print("Roots Expanded!")
         total_inference_time = 0
         total_mapping_time = 0
+        
         for search in range(self.args['num_searches']):
+            st = time.time()
             for spg in spGames:
                 spg.node = None
                 node = spg.root
@@ -54,7 +56,9 @@ class MCTSParallel:
                     node.backpropagate(value)
                 else:
                     spg.node = node
-            
+            a = time.time() - st
+            # print(f"Fully expanand in {a}")
+            st = time.time()
             expandable_spGames = [mappingIdx for mappingIdx in range(len(spGames)) if spGames[mappingIdx].node is not None]
 
             st = time.time()
@@ -67,7 +71,8 @@ class MCTSParallel:
                 # policy = np.random.random((250, 7))
                 # value = np.random.random(250)
                 # print("Expanded Random Policy!")
-            
+            b = time.time() - st
+            # print(f"Fully infered in {b}")
             total_inference_time += time.time() - st
             st = time.time()
             for i, mappingIdx in enumerate(expandable_spGames):
@@ -86,10 +91,14 @@ class MCTSParallel:
                 node.backpropagate(spg_value)
             total_mapping_time += time.time() - st
             # print(f"Search {search} Complet")
+            # c = time.time() - st
+            # print(f"Fully mapped in {c}")
+            # print(f"Total search time: {a+b+c}")
+            # print("---------------------------------------")
 
-        print(f"Average inference time: {total_inference_time / search}")
-        print(f"Average mapping time: {total_mapping_time / search}")
-        print("-------------------------------------------")
+        # print(f"Average inference time: {total_inference_time / search}")
+        # print(f"Average mapping time: {total_mapping_time / search}")
+        # print("-------------------------------------------")
         # action_probs = np.zeros(self.game.action_size)
         # for child in root.children:
         #     action_probs[child.action_taken] = child.visit_count

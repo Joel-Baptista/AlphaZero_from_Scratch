@@ -10,8 +10,7 @@ import random
 import wandb
 import time
 import os
-
-torch.manual_seed(0)
+import argparse
 
 class AlphaZero:
     def __init__(self, model, optimizer, game, args, log_mode = False) -> None:
@@ -111,27 +110,28 @@ class AlphaZero:
 
 class AlphaZeroParallel:
     def __init__(self, model, optimizer, game, args, log_mode = False,  save_models=False) -> None:
-        self.model = model
-        self.optimizer = optimizer
-        self.game = game
-        self.args = args
-        self.mcts = MCTSParallel(game, args, model)
-        self.log_mode = log_mode
-        self.save_models = save_models
-        self.init_time = None
-        self.log_iteration = 0
-
         if log_mode:
             run = wandb.init(
                 # Set the project where this run will be logged
                 project="AlphaZero",
                 name=str(game),
                 # Track hyperparameters and run metadata
-                config=self.args
+                config=args
                 )
             self.args = run.config
-        
+        else:
+            self.args = args
+
+        self.model = model
+        self.optimizer = optimizer
+        self.game = game
+        self.mcts = MCTSParallel(game, self.args, model)
+        self.log_mode = log_mode
+        self.save_models = save_models
+        self.init_time = None
+        self.log_iteration = 0
         print(self.args)
+
 
 
     def selfPlay(self):
@@ -272,6 +272,7 @@ class AlphaZeroParallel:
 
             self.model.eval()
             for selfPlay_iteration in tqdm(range(self.args["num_selfPlay_iterations"] // self.args["num_parallel_games"])):
+                print(self.args)
                 memory += self.selfPlay()
 
             self.model.train()
@@ -301,6 +302,39 @@ class SPG:
         self.node = None
 
 if __name__=="__main__":
+
+    # parser = argparse.ArgumentParser(
+    #                 prog='ProgramName',
+    #                 description='What the program does',
+    #                 epilog='Text at the bottom of help')
+
+    # parser.add_argument('--config', '-c')  
+    # parser.add_argument('--debug', '-d', action="store_true")  
+    # args = parser.parse_args()
+    args = {
+        "C": 5,
+        "num_searches": 1,
+        "num_iterations": 40,
+        "num_selfPlay_iterations": 10,
+        "num_parallel_games": 1,
+        "num_epochs": 6,
+        "batch_size": 64,
+        "temperature": 0.2,
+        "dirichlet_epsilon": 0.5,
+        "dirichlet_alpha": 0.8  
+    }
+    # args = {
+    #     'C': 2.9904504116582817, 
+    #     'batch_size': 113, 
+    #     'dirichlet_alpha': 0.5686682396595849, 
+    #     'dirichlet_epsilon': 0.9196408364077916, 
+    #     'num_epochs': 19, 
+    #     'num_iterations': 17, 
+    #     'num_parallel_games': 250, 
+    #     'num_searches': 3182, 
+    #     'num_selfPlay_iterations': 500, 
+    #     'temperature': 1.1318118266763582}
+
     game = ConnectFour()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -309,19 +343,11 @@ if __name__=="__main__":
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
     print(os.path.exists("models"))
-    args = {
-        'C': 5,
-        'num_searches': 4200,
-        'num_iterations': 40,
-        'num_selfPlay_iterations': 500,
-        'num_parallel_games': 250,
-        'num_epochs': 6,
-        'batch_size': 128,
-        'temperature': 0.2,
-        'dirichlet_epsilon': 0.5,
-        'dirichlet_alpha': 0.8  
-    }
+
 
     alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=False)
 
     alphaZero.learn()
+
+    a = 0.07408
+    b = 0.1444
