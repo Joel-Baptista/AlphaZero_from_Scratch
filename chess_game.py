@@ -17,15 +17,17 @@ class ChessGame:
                                 "h": 8,
                                 }
         self.knight_move_mapping = { # (x, y) where x is the horizontal squares and y the vertical sqaures
-            "1": (1, 2),
-            "2": (-1, 2),
-            "3": (2, 1),
-            "4": (-2, 1),
-            "5": (-2, 1),
-            "6": (-2, -1),
-            "7": (1, -2),
-            "8": (2, -1),
+            "(1, 2)": 1,
+            "(-1, 2)": 2,
+            "(2, 1)": 3,
+            "(-2, 1)": 4,
+            "(-1, -2)": 5,
+            "(-2, -1)": 6,
+            "(1, -2)": 7,
+            "(2, -1)": 8,
         }
+
+        self.encoded_action = ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "Knights", "Under"]
 
     def __repr__(self) -> str:
         return "ChessGame"
@@ -33,51 +35,57 @@ class ChessGame:
     def get_initial_state(self):
         return chess.Board().fen()
 
-    def get_next_state(self, state: str, action: str | np.array):
+    def get_next_state(self, state: str, action: str | np.ndarray):
         
-        if isinstance(action, np.array):
+        if isinstance(action, np.ndarray):
             print("Numpy!!!")
 
         board_state = chess.Board(state)
         board_state.push_uci(action)
         return board_state.fen()
     
-    def get_valid_moves(self, state: str):
+    def get_uci_valid_moves(self, state: str):
         board_state = chess.Board(state)
         valid_moves = board_state.legal_moves
         print(valid_moves)
         valid_moves = [str(move) for move in valid_moves]
         return valid_moves
     
+    def get_valid_moves(self, state: str):
+        board_state = chess.Board(state)
+        valid_moves = board_state.legal_moves
+        print(valid_moves)
+        valid_moves = [str(move) for move in valid_moves]
+        relative_valid_moves = [self.relative_movement(state, move) for move in valid_moves]
+        print(relative_valid_moves)
+        encoded_valid_moves = np.zeros((1, 8, 8, 73))
+        #TODO Add special move of underpromoting
+        for move in relative_valid_moves:
+            print(move["direction"])
+            print(move)
+            if isinstance(move["direction"], tuple):
+                index_dir = self.encoded_action.index("Knights")
+                index_len = self.knight_move_mapping[str(move["direction"])]
+            else:
+                index_dir = self.encoded_action.index(move["direction"])
+                index_len = move["lenght"]
+
+            index_frame = index_dir * 7 + index_len - 1
+            l = int(move["position"][1])
+            c = move["position"][0]
+            print(index_frame)
+            print(l)
+            print(c)
+            print(self.collumn_mapping[c])
+            print(encoded_valid_moves.shape)
+            print(encoded_valid_moves[0, 1, 7, 56])
+            encoded_valid_moves[0, 7 - (l - 1), 7 - (self.collumn_mapping[c] - 1), index_frame] = 1
+
+        return encoded_valid_moves
+
     def check_win(self, state, action):
         if action is None:
             return False
-
-        row = np.min(np.where(state[:, action] != 0))
-        collumn = action
-
-        player = state[row][collumn]
-
-        def count(offset_row, offset_collumn):
-            for i in range(1, self.in_a_row):
-                r = row + offset_row * i
-                c = action + offset_collumn * i
-                if (
-                    r < 0
-                    or r>= self.row_count
-                    or c < 0
-                    or c>= self.collumn_count
-                    or state[r][c] != player
-                ):
-                    return i - 1
-            return self.in_a_row - 1
-
-        return (
-            count(1, 0) >= self.in_a_row - 1 # vertical check
-            or (count(0, 1) + count(0, -1)) >= self.in_a_row - 1 # horizontal check
-            or (count(1, 1) + count(-1, -1)) >= self.in_a_row - 1 # top left diagonal check
-            or (count(1, -1) + count(-1, 1)) >= self.in_a_row - 1 # top right diagonal check
-        )
 
     def get_value_and_terminated(self, state, action):
         if self.check_win(state, action):
@@ -159,6 +167,7 @@ class ChessGame:
         return r.astype(bool)
 
     def relative_movement(self, state: str, move: str):
+        #TODO Add special move of underpromoting
         board_state = chess.Board(state)
         pos = move[0:2]
         relative_move = {"piece": str.lower(str(board_state.piece_at(chess.parse_square(pos)))),
@@ -212,12 +221,14 @@ if __name__=="__main__":
     print(state)
     for i in range(0, 100):
         print(state)
-        valid_moves = game.get_valid_moves(state)
-        print(valid_moves)
-        print(chess.Board(state))
+        valid_moves = game.get_uci_valid_moves(state)
+        print(state)
+        # print(valid_moves)
+        # print(chess.Board(state))
         encoded_state = game.get_encoded_state(state)
-        for i in range(0, 19):
-            image = encoded_state[0,:,:, i]
+        encoded_actions = game.get_valid_moves(state)
+        for i in range(0, 73):
+            image = encoded_actions[0,:,:, i]
             print(np.shape(image))
             print(image.astype(np.uint8))
             cv.imshow("state", 255 * image.astype(np.uint8))
@@ -229,6 +240,7 @@ if __name__=="__main__":
         print("--------------------------------------")
         move = random.choice(valid_moves)
         relative_move = game.relative_movement(state, move)
+        game.get_valid_moves(state)
         # if chess.Board(state).has_legal_en_passant():
         #     for i in range(0, 19):
         #         image = encoded_state[0,:,:, i]
@@ -241,4 +253,4 @@ if __name__=="__main__":
         #     if key == ord("q"):
         #             break
 
-        state = game.get_next_state(state, np.zeros((1,1)))
+        state = game.get_next_state(state, move)
