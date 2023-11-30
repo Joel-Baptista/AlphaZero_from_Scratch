@@ -71,7 +71,7 @@ class MCTSParallel:
                 # policy = np.random.random((250, 7))
                 # value = np.random.random(250)
                 # print("Expanded Random Policy!")
-            b = time.time() - st
+            # b = time.time() - st
             # print(f"Fully infered in {b}")
             total_inference_time += time.time() - st
             st = time.time()
