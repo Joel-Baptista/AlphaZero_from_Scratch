@@ -197,8 +197,11 @@ class SPG:
 
 if __name__=="__main__":
     debug = False
-    device = "cuda:0"
-
+    if "DEVICE" in os.environ:
+        device = os.getenv("DEVICE")
+    else:
+        device = "cuda:0"
+    
     # parser = argparse.ArgumentParser(
     #                 prog='ProgramName',
     #                 description='What the program does',
