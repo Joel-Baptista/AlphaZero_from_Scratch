@@ -1,4 +1,5 @@
 import numpy as np
+from colorama import Fore
 
 class ConnectFour:
     def __init__(self) -> None:
@@ -9,6 +10,20 @@ class ConnectFour:
 
     def __repr__(self) -> str:
         return "ConnectFour"
+
+    def show(self, state) -> None:
+
+        for row in state:
+            str_row = "| "
+            for item in row:
+                if item == 1:
+                    str_row += Fore.RED
+                elif item == -1:
+                    str_row += Fore.YELLOW
+                str_row +=  "O "
+                str_row += Fore.RESET
+            print(f"{str_row} |")
+            
 
     def get_initial_state(self):
         return np.zeros((self.row_count, self.collumn_count))

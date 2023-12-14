@@ -258,7 +258,7 @@ if __name__=="__main__":
     device = torch.device(device if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     model = ResNet(game, args["num_resblocks"], args["num_hidden"], device)
-
+    #TODO make a first inference to verifying the full ocupancy of the model in the GPU
     optimizer = torch.optim.Adam(model.parameters(), lr=args["lr"], weight_decay=args["weight_decay"])
     print(os.path.exists("models"))
 

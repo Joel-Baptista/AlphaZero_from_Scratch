@@ -6,23 +6,28 @@ import numpy as np
 import torch
 
 args = {
-    'C': 2,
-    'num_searches': 600,
-    'num_iterations': 3,
-    'num_selfPlay_iterations': 500,
-    'num_epochs': 4,
-    'batch_size': 64,
-    'temperature': 1.25,
-    'dirichlet_epsilon': 0,
-    'dirichlet_alpha': 0.3  
-}
+    "C": 5,
+    "num_searches": 600,
+    "num_iterations": 40,
+    "num_selfPlay_iterations": 500,
+    "num_parallel_games": 250,
+    "num_epochs": 6,
+    "batch_size": 64,
+    "temperature": 0.2,
+    "dirichlet_epsilon": 0.5,
+    "dirichlet_alpha": 0.8,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "num_resblocks": 15,
+    "num_hidden": 1024,  
+    }
 
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     game = ConnectFour()
     player = 1
-    model = ResNet(game, 9, 128, device)
-    model.load_state_dict(torch.load('models/model_7_ConnectFour.pt', map_location=device))
+    model = ResNet(game, args["num_resblocks"], args["num_hidden"], device)
+    model.load_state_dict(torch.load('models/model_10_ConnectFour.pt', map_location=device))
     model.eval() 
 
     mcts = MCTS(game, args, model)
@@ -30,7 +35,7 @@ def main():
     state = game.get_initial_state()
 
     while True:
-        print(state)
+        game.show(state)
 
         if player == 1:
             valid_moves = game.get_valid_moves(state)
@@ -50,7 +55,7 @@ def main():
         value, is_terminal = game.get_value_and_terminated(state, action)
 
         if is_terminal:
-            print(state)
+            game.show(state)
             if value == 1:
                 print(player, " won")
 

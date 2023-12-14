@@ -17,7 +17,7 @@ def main():
     state = game.get_initial_state()
 
     while True:
-        print(state)
+        game.show(state)
 
         if player == 1:
             valid_moves = game.get_valid_moves(state)
