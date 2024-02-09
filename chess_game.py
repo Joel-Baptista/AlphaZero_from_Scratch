@@ -56,6 +56,9 @@ class ChessGame:
 
     def get_initial_state(self):
         return chess.Board().fen()
+    
+    def show(self, state):
+        print(chess.Board(state))
 
     def get_next_state(self, state: str, action: str | np.ndarray):
         
@@ -97,16 +100,11 @@ class ChessGame:
         pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
         print(f"pos: {pos}")
 
-        # board_state = chess.Board(state)
-        # print(board_state)
-        # piece = str.lower(str(board_state.piece_at(chess.parse_square(pos))))
-        # print(piece)
-        # print(move)
         if move == "Knights":
             knight_jump = self.reverse_knight_move_mapping[str(index_len)]
             print(knight_jump)
             new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
-            # print(f"New Pos: {new_pos}")
+
         elif move == "N":
             new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
         elif move == "S":
@@ -131,22 +129,20 @@ class ChessGame:
     def get_uci_valid_moves(self, state: str):
         board_state = chess.Board(state)
         valid_moves = board_state.legal_moves
-        print(valid_moves)
+
         valid_moves = [str(move) for move in valid_moves]
         return valid_moves
     
     def get_valid_moves(self, state: str):
         board_state = chess.Board(state)
         valid_moves = board_state.legal_moves
-        # print(valid_moves)
         valid_moves = [str(move) for move in valid_moves]
         relative_valid_moves = [self.relative_movement(state, move) for move in valid_moves]
-        # print(relative_valid_moves)
+
         encoded_valid_moves = np.zeros((1, 8, 8, 73))
         #TODO Add special move of underpromoting
         for move in relative_valid_moves:
-            # print(move["direction"])
-            # print(move)
+
             if isinstance(move["direction"], tuple):
                 index_dir = self.encoded_action.index("Knights")
                 index_len = self.knight_move_mapping[str(move["direction"])]
@@ -157,25 +153,24 @@ class ChessGame:
             index_frame = index_dir * 7 + index_len - 1
             l = int(move["position"][1])
             c = move["position"][0]
-            # print(index_frame)
-            # print(l)
-            # print(c)
-            # print(self.collumn_mapping[c])
-            # print(encoded_valid_moves.shape)
-            # print(encoded_valid_moves[0, 1, 7, 56])
+
             encoded_valid_moves[0, 7 - (l - 1), 7 - (self.collumn_mapping[c] - 1), index_frame] = 1
 
         return encoded_valid_moves
 
     def check_win(self, state, action):
-        if action is None:
-            return False
+        state = self.get_next_state(state, action)
+        return chess.Board(state).is_checkmate()
+        
 
     def get_value_and_terminated(self, state, action):
-        if self.check_win(state, action):
+        state = self.get_next_state(state, action)
+        board_state = chess.Board(state)
+    
+        if board_state.is_checkmate():
             return 1, True
         
-        if np.sum(self.get_valid_moves(state)) == 0:
+        if board_state.is_stalemate():
             return 0, True
         
         return 0, False
@@ -186,8 +181,8 @@ class ChessGame:
     def get_opponent_value(self, value):
         return -value
 
-    def change_prespective(self, state, player):
-        return state * player
+    # def change_prespective(self, state, player):
+    #     return state * player
 
     def get_encoded_state(self, state: str | list):
         """
