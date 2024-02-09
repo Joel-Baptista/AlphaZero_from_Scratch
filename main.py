@@ -5,7 +5,7 @@ import numpy as np
 
 args = {
     'C': 1.41,
-    'num_searches': 10_000
+    'num_searches': 1_000
 }
 
 def main():
@@ -37,7 +37,7 @@ def main():
         value, is_terminal = game.get_value_and_terminated(state, action)
 
         if is_terminal:
-            print(state)
+            game.show(state)
             if value == 1:
                 print(player, " won")
 

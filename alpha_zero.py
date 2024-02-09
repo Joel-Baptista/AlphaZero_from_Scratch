@@ -1,4 +1,6 @@
-from mcts_alpha import MCTS, MCTSParallel
+from mcts_alpha import MCTSParallel
+from mcts_alpha import MCTS as MCTSAlpha
+from mcts import MCTS
 from tictactoe import TicTacToe
 from connect_four import ConnectFour
 from model import ResNet
@@ -110,48 +112,102 @@ class AlphaZeroParallel:
                     "time": (time.time() - self.init_time) / 60
                         }, step=self.log_iteration)
     
-    def eval(self, memory):
-        random.shuffle(memory)
-        total_loss = 0
-        total_policy_loss = 0
-        total_value_loss = 0
-        iterations = 0
-        for batchIdx in range(0, len(memory), self.args["batch_size"]):
-            sample = memory[batchIdx:min(batchIdx+self.args["batch_size"], len(memory)-1)]
-            if len(sample)<2:
-                continue
+    def eval(self):
+        player = 1
 
-            state, policy_targets, value_targets = zip(*sample)
+        mcts = MCTS(self.game, {'C': 1.41, 'num_searches': 1200})
+        mcts_alpha = MCTSAlpha(self.game, self.args, self.model)
+        alpha_wins = 0
+        st = time.time()
+        for i in range(1, 21):
+            print(f"Start Game number {i}")
+            state = self.game.get_initial_state()
 
-            state, policy_targets, value_targets = np.array(state), np.array(policy_targets), np.array(value_targets).reshape(-1, 1)
+            r = random.random()
+            if r > 0.5:
+                alpha_player = 1
+            else:
+                alpha_player = -1
 
-            state = torch.tensor(state, dtype=torch.float32, device=self.model.device)
-            policy_targets = torch.tensor(policy_targets, dtype=torch.float32, device=self.model.device)
-            value_targets = torch.tensor(value_targets, dtype=torch.float32, device=self.model.device)
+            while True:
+                # game.show(state)
 
-            out_policy, out_value = self.model(state)
+                if player == alpha_player:
+                    # print("Alpha Turn")
+                    neutral_state = self.game.change_prespective(state, player)
+                    mcts_probs = mcts_alpha.search(neutral_state)
+                    action = np.argmax(mcts_probs)
+                else:
+                    # print("MTCS Turn")
+                    neutral_state = self.game.change_prespective(state, player)
+                    mcts_probs = mcts.search(neutral_state)
+                    action = np.argmax(mcts_probs)
 
-            policy_loss = F.cross_entropy(out_policy, policy_targets)
-            value_loss = F.mse_loss(out_value, value_targets)
+                state = game.get_next_state(state, action, player)
 
-            loss = policy_loss + value_loss
+                value, is_terminal = game.get_value_and_terminated(state, action)
+                
+                if is_terminal:
+                    # game.show(state)
+                    if value == 1:
+                        winner = "MTCS"
+                        if player == alpha_player: 
+                            winner = "Alpha"
+                            alpha_wins += 1
 
-            total_loss += loss.detach().cpu().item()
-            total_policy_loss += policy_loss.detach().cpu().item()
-            total_value_loss += value_loss.detach().cpu().item()
-            iterations += 1
-        
-        val_loss = total_loss / iterations
-        val_policy_loss = total_policy_loss / iterations
-        val_value_loss = total_value_loss / iterations
+                        # print(winner, " won")
+                    break
 
-        print(f"Validation loss: {val_loss}, Policy Validation Loss: {val_policy_loss}, Value Validation Loss: {val_value_loss}")
-        if self.log_mode:
+                player = self.game.get_opponent(player)
+
+        alpha_wins_ratio = alpha_wins / i
+        if self.log_mode:         
             wandb.log({
-                "val_loss": val_loss,
-                "val_policy_loss": val_policy_loss,
-                "val_value_loss": val_value_loss }
-                , step=self.log_iteration)
+                "eval_metric": alpha_wins_ratio
+            })
+
+
+        # random.shuffle(memory)
+        # total_loss = 0
+        # total_policy_loss = 0
+        # total_value_loss = 0
+        # iterations = 0
+        # for batchIdx in range(0, len(memory), self.args["batch_size"]):
+        #     sample = memory[batchIdx:min(batchIdx+self.args["batch_size"], len(memory)-1)]
+        #     if len(sample)<2:
+        #         continue
+
+        #     state, policy_targets, value_targets = zip(*sample)
+
+        #     state, policy_targets, value_targets = np.array(state), np.array(policy_targets), np.array(value_targets).reshape(-1, 1)
+
+        #     state = torch.tensor(state, dtype=torch.float32, device=self.model.device)
+        #     policy_targets = torch.tensor(policy_targets, dtype=torch.float32, device=self.model.device)
+        #     value_targets = torch.tensor(value_targets, dtype=torch.float32, device=self.model.device)
+
+        #     out_policy, out_value = self.model(state)
+
+        #     policy_loss = F.cross_entropy(out_policy, policy_targets)
+        #     value_loss = F.mse_loss(out_value, value_targets)
+
+        #     loss = policy_loss + value_loss
+
+        #     total_loss += loss.detach().cpu().item()
+        #     total_policy_loss += policy_loss.detach().cpu().item()
+        #     total_value_loss += value_loss.detach().cpu().item()
+        #     iterations += 1
+        
+        # val_loss = total_loss / iterations
+        # val_policy_loss = total_policy_loss / iterations
+        # val_value_loss = total_value_loss / iterations
+
+        # print(f"Validation loss: {val_loss}, Policy Validation Loss: {val_policy_loss}, Value Validation Loss: {val_value_loss}")
+        # if self.log_mode:
+        #     wandb.log({
+        #         "val_loss": val_loss,
+        #         "val_policy_loss": val_policy_loss,
+        #         "val_value_loss": val_value_loss }
+        #         , step=self.log_iteration)
 
     def learn(self):
         self.init_time = time.time()
@@ -181,12 +237,12 @@ class AlphaZeroParallel:
                 torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}_{self.game}.pt") 
 
         self.model.eval()
-        val_memory = []
-        validation_iterations = self.args["num_selfPlay_iterations"] // (5 * self.args["num_parallel_games"])
-        if validation_iterations < 1: validation_iterations = 1
-        for selfPlay_iteration in tqdm(range(validation_iterations)):
-            val_memory += self.selfPlay()
-        self.eval(val_memory)
+        self.eval()
+        # val_memory = []
+        # validation_iterations = self.args["num_selfPlay_iterations"] // (5 * self.args["num_parallel_games"])
+        # if validation_iterations < 1: validation_iterations = 1
+        # for selfPlay_iteration in tqdm(range(validation_iterations)):
+        #     val_memory += self.selfPlay()
 
 class SPG:
     def __init__(self, game) -> None:
@@ -215,8 +271,8 @@ if __name__=="__main__":
 
     args = {
         "C": 5,
-        "num_searches": 300,
-        "num_iterations": 40,
+        "num_searches": 10,
+        "num_iterations": 2,
         "num_selfPlay_iterations": 500,
         "num_parallel_games": 250,
         "num_epochs": 6,
