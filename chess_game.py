@@ -3,6 +3,8 @@ import chess
 import random
 import math
 import cv2 as cv
+from model import ResNetChess
+import torch
 
 class ChessGame:
     def __init__(self) -> None:
@@ -69,61 +71,121 @@ class ChessGame:
         board_state.push_uci(action)
         return board_state.fen()
     
-    def decode_action(self, state: str, action: np.ndarray):
-        plane = np.argmax(action, axis=2)
-        print(f"plane: {plane}")
-        possible_moves = np.nonzero(plane)
-        print(f"possible_moves: {possible_moves}")
-        if len(possible_moves[0]) > 1:
-            idx_r = random.randint(0, len(np.nonzero(plane))-1)
-            move_idx = plane[np.nonzero(plane)[0][idx_r]][np.nonzero(plane)[1][idx_r]]
-        elif len(possible_moves[0]) == 0: # Special case, the first plane is the best move, indexed with zero
-            move_idx = 0
-        else: 
-            move_idx = plane[np.nonzero(plane)[0][0]][np.nonzero(plane)[1][0]]
+    def decode_all_action(self, actions: np.ndarray):
+        decoded_actions = []
 
-        # print(move_idx // 7)
-        print(f"Direction: {self.encoded_action[move_idx // 7]}")
-        index_dir = move_idx // 7
-        index_len = move_idx - index_dir * 7 + 1
-        print(f"Len: {index_len}")
-        move = self.encoded_action[index_dir]
-        print(f"Max actions: {action[:,:, move_idx]}")
-        possible_positions = np.argmax(action[:,:, move_idx])
-        print(f"possible_positions: {possible_positions}")
-        c = possible_positions % 8 + 1
-        l = 8 - possible_positions // 8
+        for action in actions:
+            print(action.shape)
+            plane = np.argmax(action, axis=2)
+            # print(f"plane: {plane}")
+            possible_moves = np.nonzero(plane)
+            # print(f"possible_moves: {possible_moves}")
+            if len(possible_moves[0]) > 1:
+                idx_r = random.randint(0, len(np.nonzero(plane))-1)
+                move_idx = plane[np.nonzero(plane)[0][idx_r]][np.nonzero(plane)[1][idx_r]]
+            elif len(possible_moves[0]) == 0: # Special case, the first plane is the best move, indexed with zero
+                move_idx = 0
+            else: 
+                move_idx = plane[np.nonzero(plane)[0][0]][np.nonzero(plane)[1][0]]
 
-        print(f"c: {c}")
-        print(f"l:{l}")
+            # print(move_idx // 7)
+            index_dir = move_idx // 7
+            index_len = move_idx - index_dir * 7 + 1
+            move = self.encoded_action[index_dir]
+            possible_positions = np.argmax(action[:,:, move_idx])
+            c = possible_positions % 8 + 1
+            l = 8 - possible_positions // 8
 
-        pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
-        print(f"pos: {pos}")
+            pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
 
-        if move == "Knights":
-            knight_jump = self.reverse_knight_move_mapping[str(index_len)]
-            print(knight_jump)
-            new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
+            if move == "Knights":
+                knight_jump = self.reverse_knight_move_mapping[str(index_len)]
+                print(knight_jump)
+                new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
 
-        elif move == "N":
-            new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
-        elif move == "S":
-            new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l - index_len}"
-        elif move == "W":
-            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l}"
-        elif move == "E":
-            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l}"
-        elif move == "NE":
-            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
-        elif move == "NW":
-            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
-        elif move == "SW":
-            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
-        elif move == "SE":
-            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
+            elif move == "N":
+                new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
+            elif move == "S":
+                new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l - index_len}"
+            elif move == "W":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l}"
+            elif move == "E":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l}"
+            elif move == "NE":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
+            elif move == "NW":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
+            elif move == "SW":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
+            elif move == "SE":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
 
-        print(f"{pos}{new_pos}")
-        return f"{pos}{new_pos}"
+            decoded_actions.append(f"{pos}{new_pos}")
+            print(f"{pos}{new_pos}")
+        return decoded_actions
+
+
+
+    def decode_action(self, actions: np.ndarray):
+        decoded_actions = []
+
+        for action in actions:
+            print(action.shape)
+            plane = np.argmax(action, axis=2)
+            # print(f"plane: {plane}")
+            possible_moves = np.nonzero(plane)
+            # print(f"possible_moves: {possible_moves}")
+            if len(possible_moves[0]) > 1:
+                idx_r = random.randint(0, len(np.nonzero(plane))-1)
+                move_idx = plane[np.nonzero(plane)[0][idx_r]][np.nonzero(plane)[1][idx_r]]
+            elif len(possible_moves[0]) == 0: # Special case, the first plane is the best move, indexed with zero
+                move_idx = 0
+            else: 
+                move_idx = plane[np.nonzero(plane)[0][0]][np.nonzero(plane)[1][0]]
+
+            # print(move_idx // 7)
+            print(f"Direction: {self.encoded_action[move_idx // 7]}")
+            index_dir = move_idx // 7
+            index_len = move_idx - index_dir * 7 + 1
+            print(f"Len: {index_len}")
+            move = self.encoded_action[index_dir]
+            print(f"Max actions: {action[:,:, move_idx]}")
+            possible_positions = np.argmax(action[:,:, move_idx])
+            print(f"possible_positions: {possible_positions}")
+            c = possible_positions % 8 + 1
+            l = 8 - possible_positions // 8
+
+            print(f"c: {c}")
+            print(f"l:{l}")
+
+            pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
+            print(f"pos: {pos}")
+
+            if move == "Knights":
+                knight_jump = self.reverse_knight_move_mapping[str(index_len)]
+                print(knight_jump)
+                new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
+
+            elif move == "N":
+                new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
+            elif move == "S":
+                new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l - index_len}"
+            elif move == "W":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l}"
+            elif move == "E":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l}"
+            elif move == "NE":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
+            elif move == "NW":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
+            elif move == "SW":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
+            elif move == "SE":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
+
+            decoded_actions.append(f"{pos}{new_pos}")
+            print(f"{pos}{new_pos}")
+        return decoded_actions
 
 
     def get_uci_valid_moves(self, state: str):
@@ -242,11 +304,11 @@ class ChessGame:
 
         r = np.array([[is_white_turn, *castling,
                      counter, *arrays, en_passant]])
-        r = np.moveaxis(r, 1, 3)
+        # r = np.moveaxis(r, 1, 3)
         # print(np.shape(r))
         # memory management
         del board_state
-        return r.astype(bool)
+        return r.astype(float)
 
     def relative_movement(self, state: str, move: str):
         #TODO Add special move of underpromoting
@@ -296,9 +358,27 @@ class ChessGame:
 
         return relative_move
 
+args = {
+    "C": 5,
+    "num_searches": 10,
+    "num_iterations": 40,
+    "num_selfPlay_iterations": 500,
+    "num_parallel_games": 250,
+    "num_epochs": 6,
+    "batch_size": 64,
+    "temperature": 0.2,
+    "dirichlet_epsilon": 0.5,
+    "dirichlet_alpha": 0.8,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "num_resblocks": 15,
+    "num_hidden": 1024,  
+    }
+
 if __name__=="__main__":
     game = ChessGame()
 
+    model = ResNetChess(game, args["num_resblocks"], args["num_hidden"], "cpu")
     state = game.get_initial_state()
     print(state)
     for i in range(0, 100):
@@ -308,8 +388,19 @@ if __name__=="__main__":
         # print(valid_moves)
         # print(chess.Board(state))
         encoded_state = game.get_encoded_state(state)
-        encoded_actions = game.get_valid_moves(state)
-        decoded_action = game.decode_action(state, encoded_actions[0])
+
+        policy, value = model(torch.Tensor(encoded_state))
+        policy = torch.softmax(policy, axis=1).detach().cpu().numpy()
+        valid_moves = game.get_valid_moves(state)
+        policy *= valid_moves
+        policy /= np.sum(policy)
+        
+        print(game.decode_action(policy))
+        # print(encoded_state.shape)
+        # encoded_actions = game.get_valid_moves(state)
+        # decoded_action = game.decode_action(state, encoded_actions[0])
+        # print(encoded_actions.shape)
+        break
         # for i in range(0, 73):
         #     image = encoded_actions[0,:,:, i]
         #     print(np.shape(image))

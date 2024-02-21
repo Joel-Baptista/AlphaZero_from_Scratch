@@ -2,6 +2,54 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+class ResNetChess(nn.Module):
+    def __init__(self, game, num_resBlocks, num_hidden, device) -> None:
+        super().__init__()
+
+        self.device = device
+        self.startBlock = nn.Sequential(
+            nn.Conv2d(19, num_hidden, kernel_size=3, padding=1),
+            nn.BatchNorm2d(num_hidden),
+            nn.ReLU(),
+        )
+
+        self.backBone = nn.ModuleList(
+            [ResBlock(num_hidden) for i in range(num_resBlocks)]
+        )
+
+        self.policyHead = nn.Sequential(
+            nn.Conv2d(num_hidden, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32 * 8 * 8, 8 * 8 * 73)
+        )
+
+        self.valueHead = nn.Sequential(
+            nn.Conv2d(num_hidden, 3, kernel_size=3, padding=1),
+            nn.BatchNorm2d(3),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(3 * 8 * 8, 1),
+            nn.Tanh()
+        )
+        self.to(device)
+    
+    def forward(self, x):
+
+        x = self.startBlock(x)
+        for resBlock in self.backBone:
+            x = resBlock(x)
+
+        policy = self.policyHead(x)
+        value = self.valueHead(x)
+
+        policy = torch.reshape(policy, (-1, 8, 8, 73))
+
+        return policy, value
+
+
 class ResNet(nn.Module):
     def __init__(self, game, num_resBlocks, num_hidden, device) -> None:
         super().__init__()
@@ -63,3 +111,4 @@ class ResBlock(nn.Module):
         x = F.relu(x)
 
         return x
+    

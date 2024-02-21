@@ -27,7 +27,7 @@ def main():
     game = ConnectFour()
     player = 1
     model = ResNet(game, args["num_resblocks"], args["num_hidden"], device)
-    model.load_state_dict(torch.load('models/model_10_ConnectFour.pt', map_location=device))
+    model.load_state_dict(torch.load('model/model_10_ConnectFour.pt', map_location=device))
     model.eval() 
 
     mcts = MCTS(game, args, model)
