@@ -15,22 +15,36 @@ def main():
 
     state = game.get_initial_state()
 
+    player_moves = ["e2e4", "f1c4", "g1f3", "f3g5", "c4f7"]
+    i = 0
     while True:
+        print("GAME STATE")
         game.show(state)
 
         if player == 1:
+            is_p_not_valid = True
             valid_moves = game.get_uci_valid_moves(state)
-            print(valid_moves)
+            while is_p_not_valid:
+                print(valid_moves)
 
-            action = str(input(f"{player}:"))
+                action = str(input(f"{player}:"))
+
+                if action in valid_moves:
+                    is_p_not_valid = False
+                else:
+                    print("Invalid Move!")
+            # action = player_moves[i]
+            # i += 1
         else:
 
             valid_moves, mcts_probs = mcts.search(state)
             action = valid_moves[np.argmax(mcts_probs)]
 
        
-        value, is_terminal = game.get_value_and_terminated(state, action)
-
+        value, is_terminal = game.get_value_and_terminated(state, action, True)
+        
+        state = game.get_next_state(state, action)
+        
         if is_terminal:
             game.show(state)
             if value == 1:
@@ -41,7 +55,6 @@ def main():
 
             break
 
-        state = game.get_next_state(state, action)
         player = game.get_opponent(player)
 
 if __name__=="__main__":

@@ -163,10 +163,13 @@ class ChessGame:
         return chess.Board(state).is_checkmate()
         
 
-    def get_value_and_terminated(self, state, action):
-        state = self.get_next_state(state, action)
-        board_state = chess.Board(state)
+    def get_value_and_terminated(self, state, action, previous_state=False):
     
+        if previous_state and action is not None:
+            state = self.get_next_state(state, action)
+            
+        board_state = chess.Board(state)
+
         if board_state.is_checkmate():
             return 1, True
         

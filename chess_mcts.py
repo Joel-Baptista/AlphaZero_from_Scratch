@@ -2,6 +2,7 @@ import numpy as np
 import math
 import random
 from chess_game import ChessGame
+import chess
 
 class MCTS:
     def __init__(self, game: ChessGame, args) -> None:
@@ -12,14 +13,16 @@ class MCTS:
         root = Node(self.game, self.args, state)
 
         for search in range(self.args['num_searches']):
+
             node = root
 
             while node.is_fully_expanded():
                 node = node.select()
 
+
             value, is_terminated = self.game.get_value_and_terminated(node.state, node.action_taken)
             value = self.game.get_opponent_value(value)
-            
+
             if not is_terminated:
                 node = node.expand()
                 value = node.simulate()
@@ -77,6 +80,7 @@ class Node:
         self.expandable_moves.pop(self.expandable_moves.index(action))
 
         child_state = self.state
+
         child_state = self.game.get_next_state(child_state, action)
         
         child = Node(self.game, self.args, child_state, self, action)
@@ -85,6 +89,7 @@ class Node:
         return child
     
     def simulate(self):
+
         value, is_terminal = self.game.get_value_and_terminated(self.state, self.action_taken)
         value = self.game.get_opponent_value(value)
 
@@ -97,7 +102,7 @@ class Node:
         while True:
             valid_moves = self.game.get_uci_valid_moves(rollout_state)
             action = random.choice(valid_moves)
-            # print(action)
+
             rollout_state = self.game.get_next_state(rollout_state, action)
         
             value, is_terminal = self.game.get_value_and_terminated(rollout_state, action)
