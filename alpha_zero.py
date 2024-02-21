@@ -12,6 +12,7 @@ import random
 import wandb
 import time
 import os
+import copy
 import argparse
 
 class AlphaZeroParallel:
@@ -115,8 +116,15 @@ class AlphaZeroParallel:
     def eval(self):
         player = 1
 
-        mcts = MCTS(self.game, {'C': 1.41, 'num_searches': 1200})
-        mcts_alpha = MCTSAlpha(self.game, self.args, self.model)
+        mtcs_args = {
+            "C": 1.41,
+            "num_searches": 600,
+            "dirichlet_epsilon": 0.2,
+            "dirichlet_alpha": 1.3,
+        }
+
+        mcts = MCTS(self.game, {'C': 1.41, 'num_searches': 2000})
+        mcts_alpha = MCTSAlpha(self.game, mtcs_args, self.model)
         alpha_wins = 0
         st = time.time()
         for i in range(1, 21):
@@ -163,7 +171,7 @@ class AlphaZeroParallel:
         alpha_wins_ratio = alpha_wins / i
         if self.log_mode:         
             wandb.log({
-                "eval_metric": alpha_wins_ratio
+                "win_rate": alpha_wins_ratio
             })
 
 
@@ -211,7 +219,7 @@ class AlphaZeroParallel:
 
     def learn(self):
         self.init_time = time.time()
-        checkpoint_counter = self.args["num_iterations"] // 10
+        checkpoint_counter = self.args["num_iterations"] // 2
         if checkpoint_counter < 1: checkpoint_counter = 1
 
         for iteration in range(self.args["num_iterations"]):
@@ -236,8 +244,8 @@ class AlphaZeroParallel:
                 torch.save(self.model.state_dict(), f"models/model_{iteration}_{self.game}.pt") 
                 torch.save(self.optimizer.state_dict(), f"models/optimizer_{iteration}_{self.game}.pt") 
 
-        self.model.eval()
-        self.eval()
+            self.model.eval()
+            self.eval()
         # val_memory = []
         # validation_iterations = self.args["num_selfPlay_iterations"] // (5 * self.args["num_parallel_games"])
         # if validation_iterations < 1: validation_iterations = 1
@@ -270,17 +278,17 @@ if __name__=="__main__":
     # device = args_parsed.device
 
     args = {
-        "C": 5,
-        "num_searches": 10,
-        "num_iterations": 2,
+        "C": 3.5,
+        "num_searches": 600,
+        "num_iterations": 8,
         "num_selfPlay_iterations": 500,
         "num_parallel_games": 250,
-        "num_epochs": 6,
-        "batch_size": 64,
-        "temperature": 0.2,
-        "dirichlet_epsilon": 0.5,
-        "dirichlet_alpha": 0.8,
-        "lr": 0.001,
+        "num_epochs": 8,
+        "batch_size": 350,
+        "temperature": 15,
+        "dirichlet_epsilon": 0.2,
+        "dirichlet_alpha": 1.3,
+        "lr": 0.0001,
         "weight_decay": 0.0001,
         "num_resblocks": 9,
         "num_hidden": 128,  
@@ -318,7 +326,7 @@ if __name__=="__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=args["lr"], weight_decay=args["weight_decay"])
     print(os.path.exists("models"))
 
-    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=False)
+    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=True)
 
     alphaZero.learn()
 
