@@ -1,9 +1,8 @@
-from mcts_alpha import MCTSParallel
-from mcts_alpha import MCTS as MCTSAlpha
+from chess_mcts_alpha import MCTSParallel
+from chess_mcts_alpha import MCTS as MCTSAlpha
 from mcts import MCTS
-from tictactoe import TicTacToe
-from connect_four import ConnectFour
-from model import ResNet
+from chess_game import ChessGame
+from model import ResNetChess
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -16,7 +15,7 @@ import copy
 import argparse
 
 class AlphaZeroParallel:
-    def __init__(self, model, optimizer, game, args, log_mode = False,  save_models=False) -> None:
+    def __init__(self, model, optimizer, game: ChessGame, args, log_mode = False,  save_models=False) -> None:
         self.model = model
         self.optimizer = optimizer
         self.game = game
@@ -35,31 +34,36 @@ class AlphaZeroParallel:
         player = 1
 
         spGames = [SPG(self.game) for spg in range(self.args['num_parallel_games'])]
-
+        i = 0
         while len(spGames) > 0:
             states = np.stack([spg.state for spg in spGames])
-
-            neutral_states = self.game.change_prespective(states, player)
+            i += 1
+            print(f"Episode Lenght: {i}")
+            # neutral_states = self.game.change_prespective(states, player)
             st = time.time()
             print("Starting Search")
-            self.mcts.search(neutral_states, spGames)
+            self.mcts.search(states, spGames)
             print(f"Search Time: {time.time() - st}")
             st = time.time()
             for i in range(len(spGames))[::-1]:
                 spg = spGames[i]
-                action_probs = np.zeros(self.game.action_size)
+                valid_actions = self.game.get_uci_valid_moves(spg.state)
+                action_probs = np.zeros(len(valid_actions))
                 for child in spg.root.children:
-                    action_probs[child.action_taken] = child.visit_count
+                    action_probs[valid_actions.index(child.action_taken)] = child.visit_count
 
+                print(action_probs)
                 action_probs /= np.sum(action_probs)
 
                 spg.memory.append((spg.root.state, action_probs, player))
 
                 temperature_action_probs = action_probs ** (1 / self.args["temperature"])
                 temperature_action_probs /= np.sum(temperature_action_probs)
-                action = np.random.choice(self.game.action_size, p=temperature_action_probs)
 
-                spg.state = self.game.get_next_state(spg.state, action, player)
+                action_idx = np.random.choice(len(valid_actions), p=temperature_action_probs)
+                action = valid_actions[action_idx]
+
+                spg.state = self.game.get_next_state(spg.state, action)
 
                 value, is_terminal = self.game.get_value_and_terminated(spg.state, action)
 
@@ -174,49 +178,6 @@ class AlphaZeroParallel:
                 "win_rate": alpha_wins_ratio
             })
 
-
-        # random.shuffle(memory)
-        # total_loss = 0
-        # total_policy_loss = 0
-        # total_value_loss = 0
-        # iterations = 0
-        # for batchIdx in range(0, len(memory), self.args["batch_size"]):
-        #     sample = memory[batchIdx:min(batchIdx+self.args["batch_size"], len(memory)-1)]
-        #     if len(sample)<2:
-        #         continue
-
-        #     state, policy_targets, value_targets = zip(*sample)
-
-        #     state, policy_targets, value_targets = np.array(state), np.array(policy_targets), np.array(value_targets).reshape(-1, 1)
-
-        #     state = torch.tensor(state, dtype=torch.float32, device=self.model.device)
-        #     policy_targets = torch.tensor(policy_targets, dtype=torch.float32, device=self.model.device)
-        #     value_targets = torch.tensor(value_targets, dtype=torch.float32, device=self.model.device)
-
-        #     out_policy, out_value = self.model(state)
-
-        #     policy_loss = F.cross_entropy(out_policy, policy_targets)
-        #     value_loss = F.mse_loss(out_value, value_targets)
-
-        #     loss = policy_loss + value_loss
-
-        #     total_loss += loss.detach().cpu().item()
-        #     total_policy_loss += policy_loss.detach().cpu().item()
-        #     total_value_loss += value_loss.detach().cpu().item()
-        #     iterations += 1
-        
-        # val_loss = total_loss / iterations
-        # val_policy_loss = total_policy_loss / iterations
-        # val_value_loss = total_value_loss / iterations
-
-        # print(f"Validation loss: {val_loss}, Policy Validation Loss: {val_policy_loss}, Value Validation Loss: {val_value_loss}")
-        # if self.log_mode:
-        #     wandb.log({
-        #         "val_loss": val_loss,
-        #         "val_policy_loss": val_policy_loss,
-        #         "val_value_loss": val_value_loss }
-        #         , step=self.log_iteration)
-
     def learn(self):
         self.init_time = time.time()
         checkpoint_counter = 4
@@ -253,14 +214,14 @@ class AlphaZeroParallel:
         #     val_memory += self.selfPlay()
 
 class SPG:
-    def __init__(self, game) -> None:
+    def __init__(self, game: ChessGame) -> None:
         self.state = game.get_initial_state()
         self.memory = []
         self.root = None
         self.node = None
 
 if __name__=="__main__":
-    debug = False
+    debug = True
     if "DEVICE" in os.environ:
         device = os.getenv("DEVICE")
     else:
@@ -279,12 +240,12 @@ if __name__=="__main__":
 
     args = {
         "C": 3.5,
-        "num_searches": 600,
+        "num_searches": 5,
         "num_iterations": 8,
-        "num_selfPlay_iterations": 500,
-        "num_parallel_games": 250,
+        "num_selfPlay_iterations": 10,
+        "num_parallel_games": 5,
         "num_epochs": 8,
-        "batch_size": 350,
+        "batch_size": 5,
         "temperature": 15,
         "dirichlet_epsilon": 0.2,
         "dirichlet_alpha": 1.3,
@@ -305,7 +266,7 @@ if __name__=="__main__":
     #     'num_selfPlay_iterations': 500, 
     #     'temperature': 1.1318118266763582}
 
-    game = ConnectFour()
+    game = ChessGame()
 
     if not debug:
         run = wandb.init(
@@ -321,7 +282,7 @@ if __name__=="__main__":
 
     device = torch.device(device if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
-    model = ResNet(game, args["num_resblocks"], args["num_hidden"], device)
+    model = ResNetChess(game, args["num_resblocks"], args["num_hidden"], device)
     #TODO make a first inference to verifying the full ocupancy of the model in the GPU
     optimizer = torch.optim.Adam(model.parameters(), lr=args["lr"], weight_decay=args["weight_decay"])
     print(os.path.exists("models"))

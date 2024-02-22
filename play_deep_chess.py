@@ -5,7 +5,7 @@ from model import ResNetChess
 
 args = {
     "C": 5,
-    "num_searches": 10,
+    "num_searches": 5,
     "num_iterations": 40,
     "num_selfPlay_iterations": 500,
     "num_parallel_games": 250,
@@ -31,7 +31,7 @@ def main():
 
     state = game.get_initial_state()
 
-    player_moves = ["e2e4", "f1c4", "g1f3", "f3g5", "c4f7"]
+    player_moves = ["a2a4", "a4a5", "a5a6", "a6b7", "b7a8q"]
     i = 0
     while True:
         print("GAME STATE")
@@ -40,17 +40,21 @@ def main():
         if player == 1:
             is_p_not_valid = True
             valid_moves = game.get_uci_valid_moves(state)
-            while is_p_not_valid:
-                print(valid_moves)
+            
+            if i < len(player_moves):
+                action = player_moves[i]
+                i += 1
+            else:
+                while is_p_not_valid:   
+                    print(valid_moves)
 
-                action = str(input(f"{player}:"))
+                    action = str(input(f"{player}:"))
 
-                if action in valid_moves:
-                    is_p_not_valid = False
-                else:
-                    print("Invalid Move!")
-            # action = player_moves[i]
-            # i += 1
+                    if action in valid_moves:
+                        is_p_not_valid = False
+                    else:
+                        print("Invalid Move!")
+                
         else:
 
             valid_moves, mcts_probs = mcts.search(state)
