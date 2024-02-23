@@ -11,6 +11,7 @@ import random
 import wandb
 import time
 import os
+from stockfish import Stockfish
 import copy
 import argparse
 
@@ -34,11 +35,11 @@ class AlphaZeroParallel:
         player = 1
 
         spGames = [SPG(self.game) for spg in range(self.args['num_parallel_games'])]
-        i = 0
+        j = 0
         while len(spGames) > 0:
             states = np.stack([spg.state for spg in spGames])
-            i += 1
-            print(f"Episode Lenght: {i}")
+            j += 1
+            print(f"Episode Lenght: {j}")
             # neutral_states = self.game.change_prespective(states, player)
             st = time.time()
             print("Starting Search")
@@ -52,7 +53,7 @@ class AlphaZeroParallel:
                 for child in spg.root.children:
                     action_probs[valid_actions.index(child.action_taken)] = child.visit_count
 
-                print(action_probs)
+                # print(action_probs)
                 action_probs /= np.sum(action_probs)
 
                 spg.memory.append((spg.root.state, action_probs, player))
@@ -134,7 +135,7 @@ class AlphaZeroParallel:
         for i in range(1, 21):
             print(f"Start Game number {i}")
             state = self.game.get_initial_state()
-
+            stockfish = Stockfish(path="./stockfish/stockfish-ubuntu-x86-64-avx2", depth=18, parameters={"Threads": 2, "Minimum Thinking Time": 30})
             r = random.random()
             if r > 0.5:
                 alpha_player = 1
@@ -146,14 +147,12 @@ class AlphaZeroParallel:
 
                 if player == alpha_player:
                     # print("Alpha Turn")
-                    neutral_state = self.game.change_prespective(state, player)
-                    mcts_probs = mcts_alpha.search(neutral_state)
-                    action = np.argmax(mcts_probs)
+                    valid_moves, mcts_probs = mcts_alpha.search(state)
+                    action = valid_moves[np.argmax(mcts_probs)]
                 else:
                     # print("MTCS Turn")
-                    neutral_state = self.game.change_prespective(state, player)
-                    mcts_probs = mcts.search(neutral_state)
-                    action = np.argmax(mcts_probs)
+                    stockfish.set_fen_position(state)
+                    action = stockfish.get_best_move()
 
                 state = game.get_next_state(state, action, player)
 
@@ -190,7 +189,6 @@ class AlphaZeroParallel:
 
             self.model.eval()
             for selfPlay_iteration in tqdm(range(self.args["num_selfPlay_iterations"] // self.args["num_parallel_games"])):
-                print(self.args)
                 memory += self.selfPlay()
 
             self.model.train()
@@ -240,19 +238,19 @@ if __name__=="__main__":
 
     args = {
         "C": 3.5,
-        "num_searches": 5,
+        "num_searches": 10,
         "num_iterations": 8,
-        "num_selfPlay_iterations": 10,
-        "num_parallel_games": 5,
+        "num_selfPlay_iterations": 500,
+        "num_parallel_games": 250,
         "num_epochs": 8,
-        "batch_size": 5,
+        "batch_size": 350,
         "temperature": 15,
         "dirichlet_epsilon": 0.2,
         "dirichlet_alpha": 1.3,
         "lr": 0.0001,
         "weight_decay": 0.0001,
-        "num_resblocks": 11,
-        "num_hidden": 512,  
+        "num_resblocks": 15,
+        "num_hidden": 1014,  
     }
     # args = {
     #     'C': 2.9904504116582817, 
@@ -287,7 +285,7 @@ if __name__=="__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=args["lr"], weight_decay=args["weight_decay"])
     print(os.path.exists("models"))
 
-    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=True)
+    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=False)
 
     alphaZero.learn()
 

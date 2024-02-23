@@ -72,69 +72,64 @@ class ChessGame:
         board_state.push_uci(action)
         return board_state.fen()
     
-    def decode_all_actions(self, actions: np.ndarray, states: list[str]):
-        decoded_actions = []
+    def decode_all_actions(self, action: np.ndarray, state: list[str]):
 
-        for i, action in enumerate(actions):
-            decoded_action = []
-            state = states[i]
-            for i in range(action.shape[0]):
-                for j in range(action.shape[1]):
-                    for k in range(action.shape[2]):
-                        probability = action[i, j, k]
-                        if probability > 0:
-                            move_idx = k
+        decoded_action = []
+        for i in range(action.shape[0]):
+            for j in range(action.shape[1]):
+                for k in range(action.shape[2]):
+                    probability = action[i, j, k]
+                    if probability > 0:
+                        move_idx = k
 
 
-                            index_dir = move_idx // 7
-                            if move_idx <= 55:
-                                direction = self.encoded_action[move_idx // 7]
-                            elif 56 <= move_idx <= 63:
-                                direction = "Knights"
-                                index_dir = 8
-                            else:
-                                direction = "Under"
-                            
-                            index_len = move_idx - index_dir * 7 + 1
+                        index_dir = move_idx // 7
+                        if move_idx <= 55:
+                            direction = self.encoded_action[move_idx // 7]
+                        elif 56 <= move_idx <= 63:
+                            direction = "Knights"
+                            index_dir = 8
+                        else:
+                            direction = "Under"
+                        
+                        index_len = move_idx - index_dir * 7 + 1
 
-                            c = j + 1
-                            l = 8 - i
+                        c = j + 1
+                        l = 8 - i
 
-                            pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
+                        pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
 
-                            if direction == "Knights":
-                                knight_jump = self.reverse_knight_move_mapping[str(index_len)]
-                                new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
-                            elif direction == "N":
-                                new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
-                            elif direction == "S":
-                                new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l - index_len}"
-                            elif direction == "W":
-                                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l}"
-                            elif direction == "E":
-                                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l}"
-                            elif direction == "NE":
-                                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
-                            elif direction == "NW":
-                                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
-                            elif direction == "SW":
-                                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
-                            elif direction == "SE":
-                                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
-                            elif direction == "Under":
-                                print(f"{Fore.YELLOW}Under Promotion is not yet implemented: move_idx is {move_idx}{Fore.RESET}")
+                        if direction == "Knights":
+                            knight_jump = self.reverse_knight_move_mapping[str(index_len)]
+                            new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
+                        elif direction == "N":
+                            new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
+                        elif direction == "S":
+                            new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l - index_len}"
+                        elif direction == "W":
+                            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l}"
+                        elif direction == "E":
+                            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l}"
+                        elif direction == "NE":
+                            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
+                        elif direction == "NW":
+                            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
+                        elif direction == "SW":
+                            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
+                        elif direction == "SE":
+                            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
+                        elif direction == "Under":
+                            print(f"{Fore.YELLOW}Under Promotion is not yet implemented: move_idx is {move_idx}{Fore.RESET}")
 
-                            promotion = ""
-                            board_state = chess.Board(state)
-                            piece = str.lower(str(board_state.piece_at(chess.parse_square(pos))))
-                            if (int(new_pos[1]) == 8 or int(new_pos[1]) == 1) and piece == "p":
-                                promotion = "q" #TODO Introduce underpromotions
+                        promotion = ""
+                        board_state = chess.Board(state)
+                        piece = str.lower(str(board_state.piece_at(chess.parse_square(pos))))
+                        if (int(new_pos[1]) == 8 or int(new_pos[1]) == 1) and piece == "p":
+                            promotion = "q" #TODO Introduce underpromotions
 
-                            decoded_action.append((f"{pos}{new_pos}{promotion}", probability))
-                
-            decoded_actions.append(decoded_action)
+                        decoded_action.append((f"{pos}{new_pos}{promotion}", probability))
 
-        return decoded_actions
+        return decoded_action
 
 
 
