@@ -37,36 +37,42 @@ class AlphaZeroParallel:
         spGames = [SPG(self.game) for spg in range(self.args['num_parallel_games'])]
         j = 0
         while len(spGames) > 0:
-            states = np.stack([spg.state for spg in spGames])
             j += 1
             print(f"Episode Lenght: {j}")
             # neutral_states = self.game.change_prespective(states, player)
             st = time.time()
             print("Starting Search")
-            self.mcts.search(states, spGames)
+            self.mcts.search(spGames)
             print(f"Search Time: {time.time() - st}")
             st = time.time()
             for i in range(len(spGames))[::-1]:
                 spg = spGames[i]
                 valid_actions = self.game.get_uci_valid_moves(spg.state)
-                action_probs = np.zeros(len(valid_actions))
+
+                action_probs = np.zeros((1, 8, 8, 73))
                 for child in spg.root.children:
-                    action_probs[valid_actions.index(child.action_taken)] = child.visit_count
+                    action_probs += child.visit_count * self.game.encode_action(spg.state, child.action_taken)
 
                 # print(action_probs)
                 action_probs /= np.sum(action_probs)
 
                 spg.memory.append((spg.root.state, action_probs, player))
 
-                temperature_action_probs = action_probs ** (1 / self.args["temperature"])
-                temperature_action_probs /= np.sum(temperature_action_probs)
+                # TODO Implement temperature again
+                # temperature_action_probs = action_probs ** (1 / self.args["temperature"])
+                # temperature_action_probs /= np.sum(temperature_action_probs)
 
-                action_idx = np.random.choice(len(valid_actions), p=temperature_action_probs)
-                action = valid_actions[action_idx]
+                # action_idx = np.random.choice(len(valid_actions), p=temperature_action_probs)
+                action = self.game.decode_action(action_probs, spg.state)[0]
 
-                spg.state = self.game.get_next_state(spg.state, action)
+                spg.board_state = self.game.get_next_state(spg.board_state, action)
+                spg.state = spg.board_state.fen()
 
-                value, is_terminal = self.game.get_value_and_terminated(spg.state, action)
+                if (j % 10) == 0:
+                    self.game.show(spg.state)
+                    print("-------------------")
+
+                value, is_terminal = self.game.get_value_and_terminated(spg.board_state, action)
 
                 if is_terminal:   
                     for hist_neutral_state, hist_action_probs, hist_player in spg.memory:
@@ -94,14 +100,20 @@ class AlphaZeroParallel:
             state, policy_targets, value_targets = zip(*sample)
 
             state, policy_targets, value_targets = np.array(state), np.array(policy_targets), np.array(value_targets).reshape(-1, 1)
+            # print(policy_targets)
+            # print(policy_targets[0].shape)
+            # print(policy_targets[0][0])
+            # print(type(policy_targets[0][0]))
 
             state = torch.tensor(state, dtype=torch.float32, device=self.model.device)
             policy_targets = torch.tensor(policy_targets, dtype=torch.float32, device=self.model.device)
             value_targets = torch.tensor(value_targets, dtype=torch.float32, device=self.model.device)
+    
+            out_policy, out_value = self.model(state.squeeze(1))
+    
+            # print(policy_targets.shape)
 
-            out_policy, out_value = self.model(state)
-
-            policy_loss = F.cross_entropy(out_policy, policy_targets)
+            policy_loss = F.cross_entropy(out_policy, policy_targets.squeeze(1))
             value_loss = F.mse_loss(out_value, value_targets)
 
             loss = policy_loss + value_loss
@@ -123,7 +135,7 @@ class AlphaZeroParallel:
 
         mtcs_args = {
             "C": 1.41,
-            "num_searches": 600,
+            "num_searches": 5,
             "dirichlet_epsilon": 0.2,
             "dirichlet_alpha": 1.3,
         }
@@ -135,7 +147,8 @@ class AlphaZeroParallel:
         for i in range(1, 21):
             print(f"Start Game number {i}")
             state = self.game.get_initial_state()
-            stockfish = Stockfish(path="./stockfish/stockfish-ubuntu-x86-64-avx2", depth=18, parameters={"Threads": 2, "Minimum Thinking Time": 30})
+            board_state = game.get_board_state(state)
+            # stockfish = Stockfish(path="./stockfish/stockfish-ubuntu-x86-64-avx2", depth=18, parameters={"Threads": 2, "Minimum Thinking Time": 30})
             r = random.random()
             if r > 0.5:
                 alpha_player = 1
@@ -143,6 +156,7 @@ class AlphaZeroParallel:
                 alpha_player = -1
 
             while True:
+                state = board_state.fen()
                 # game.show(state)
 
                 if player == alpha_player:
@@ -151,12 +165,13 @@ class AlphaZeroParallel:
                     action = valid_moves[np.argmax(mcts_probs)]
                 else:
                     # print("MTCS Turn")
-                    stockfish.set_fen_position(state)
-                    action = stockfish.get_best_move()
+                    valid_moves = self.game.get_uci_valid_moves(state)
+                    action = random.choice(valid_moves)
+                    # action = stockfish.get_best_move()
 
-                state = game.get_next_state(state, action, player)
+                board_state = game.get_next_state(board_state, action)
 
-                value, is_terminal = game.get_value_and_terminated(state, action)
+                value, is_terminal = game.get_value_and_terminated(board_state, action)
                 
                 if is_terminal:
                     # game.show(state)
@@ -214,6 +229,7 @@ class AlphaZeroParallel:
 class SPG:
     def __init__(self, game: ChessGame) -> None:
         self.state = game.get_initial_state()
+        self.board_state = game.get_board_state(self.state)
         self.memory = []
         self.root = None
         self.node = None
@@ -238,19 +254,19 @@ if __name__=="__main__":
 
     args = {
         "C": 3.5,
-        "num_searches": 10,
+        "num_searches": 5,
         "num_iterations": 8,
-        "num_selfPlay_iterations": 500,
-        "num_parallel_games": 250,
+        "num_selfPlay_iterations": 3,
+        "num_parallel_games": 3,
         "num_epochs": 8,
-        "batch_size": 350,
-        "temperature": 15,
-        "dirichlet_epsilon": 0.2,
+        "batch_size": 64,
+        "temperature": 3,
+        "dirichlet_epsilon": 0.8,
         "dirichlet_alpha": 1.3,
         "lr": 0.0001,
         "weight_decay": 0.0001,
-        "num_resblocks": 15,
-        "num_hidden": 1014,  
+        "num_resblocks": 7,
+        "num_hidden": 256,  
     }
     # args = {
     #     'C': 2.9904504116582817, 
@@ -285,7 +301,8 @@ if __name__=="__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=args["lr"], weight_decay=args["weight_decay"])
     print(os.path.exists("models"))
 
-    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=True, save_models=False)
+    log_mode = not debug
+    alphaZero = AlphaZeroParallel(model, optimizer, game, args, log_mode=log_mode, save_models=False)
 
     alphaZero.learn()
 

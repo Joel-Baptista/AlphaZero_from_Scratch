@@ -6,6 +6,7 @@ import cv2 as cv
 from model import ResNetChess
 import torch
 from colorama import Fore
+import functools
 
 class ChessGame:
     def __init__(self) -> None:
@@ -56,6 +57,17 @@ class ChessGame:
 
     def __repr__(self) -> str:
         return "ChessGame"
+    
+    def get_board_state(self, state: str | chess.Board):
+        
+        if isinstance(state, chess.Board):
+            return state
+
+        return chess.Board(state)
+    
+    def get_fen(self, state: chess.Board):
+        
+        return state.fen()
 
     def get_initial_state(self):
         return chess.Board().fen()
@@ -63,15 +75,21 @@ class ChessGame:
     def show(self, state):
         print(chess.Board(state))
 
-    def get_next_state(self, state: str, action: str | np.ndarray):
+    def get_next_state(self, state: str | chess.Board, action: str | np.ndarray):
         
         if isinstance(action, np.ndarray):
             print("Numpy!!!")
 
+        if isinstance(state, chess.Board):
+            state.push_uci(action)
+            return state
+            
         board_state = chess.Board(state)
         board_state.push_uci(action)
+
         return board_state.fen()
     
+    # @functools.lru_cache(maxsize=10_000)
     def decode_all_actions(self, action: np.ndarray, state: list[str]):
 
         decoded_action = []
@@ -131,14 +149,11 @@ class ChessGame:
 
         return decoded_action
 
-
-
-
-    def decode_action(self, actions: np.ndarray):
+    def decode_action(self, actions: np.ndarray, state: str | chess.Board):
         decoded_actions = []
 
         for action in actions:
-            print(action.shape)
+            # print(action.shape)
             plane = np.argmax(action, axis=2)
             # print(f"plane: {plane}")
             possible_moves = np.nonzero(plane)
@@ -151,27 +166,36 @@ class ChessGame:
             else: 
                 move_idx = plane[np.nonzero(plane)[0][0]][np.nonzero(plane)[1][0]]
 
-            # print(move_idx // 7)
-            print(f"Direction: {self.encoded_action[move_idx // 7]}")
             index_dir = move_idx // 7
+            if move_idx <= 55:
+                move = self.encoded_action[move_idx // 7]
+            elif 56 <= move_idx <= 63:
+                move = "Knights"
+                index_dir = 8
+            else:
+                move = "Under"
+            
+
+            # print(move_idx // 7)
+            # print(f"Direction: {self.encoded_action[move_idx // 7]}")
             index_len = move_idx - index_dir * 7 + 1
-            print(f"Len: {index_len}")
+            # print(f"Len: {index_len}")
             move = self.encoded_action[index_dir]
-            print(f"Max actions: {action[:,:, move_idx]}")
+            # print(f"Max actions: {action[:,:, move_idx]}")
             possible_positions = np.argmax(action[:,:, move_idx])
-            print(f"possible_positions: {possible_positions}")
+            # print(f"possible_positions: {possible_positions}")
             c = possible_positions % 8 + 1
             l = 8 - possible_positions // 8
 
-            print(f"c: {c}")
-            print(f"l:{l}")
+            # print(f"c: {c}")
+            # print(f"l:{l}")
 
             pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
             # print(f"pos: {pos}")
 
             if move == "Knights":
                 knight_jump = self.reverse_knight_move_mapping[str(index_len)]
-                print(knight_jump)
+                # print(knight_jump)
                 new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
 
             elif move == "N":
@@ -190,19 +214,34 @@ class ChessGame:
                 new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
             elif move == "SE":
                 new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
+            elif move == "Under":
+                        print(f"{Fore.YELLOW}Under Promotion is not yet implemented: move_idx is {move_idx}{Fore.RESET}")
 
-            decoded_actions.append(f"{pos}{new_pos}")
+            promotion = ""
+            board_state = chess.Board(state)
+            piece = str.lower(str(board_state.piece_at(chess.parse_square(pos))))
+            if (int(new_pos[1]) == 8 or int(new_pos[1]) == 1) and piece == "p":
+                promotion = "q" #TODO Introduce underpromotions
+
+
+            decoded_actions.append(f"{pos}{new_pos}{promotion}")
             # print(f"{pos}{new_pos}")
         return decoded_actions
 
 
-    def get_uci_valid_moves(self, state: str):
-        board_state = chess.Board(state)
+    def get_uci_valid_moves(self, state: str | chess.Board):
+
+        if isinstance(state, str):
+            board_state = chess.Board(state)
+        elif isinstance(state, chess.Board):
+            board_state = state
+
         valid_moves = board_state.legal_moves
 
         valid_moves = [str(move) for move in valid_moves]
         return valid_moves
     
+    @functools.lru_cache(maxsize=10_000)
     def get_valid_moves(self, state: str):
         valid_moves = self.get_uci_valid_moves(state)
         relative_valid_moves = [self.relative_movement(state, move) for move in valid_moves]
@@ -225,25 +264,50 @@ class ChessGame:
             encoded_valid_moves[0, 7 - (l - 1), self.collumn_mapping[c] - 1, index_frame] = 1
 
         return encoded_valid_moves
+    
+    def encode_action(self, state: str, action: str):
+
+        relative_move = self.relative_movement(state, action)
+        encoded_action = np.zeros((1, 8, 8, 73))
+
+        if isinstance(relative_move["direction"], tuple):
+                index_dir = self.encoded_action.index("Knights")
+                index_len = self.knight_move_mapping[str(relative_move["direction"])]
+        else:
+            index_dir = self.encoded_action.index(relative_move["direction"])
+            index_len = relative_move["lenght"]
+
+        index_frame = index_dir * 7 + index_len - 1
+        l = int(relative_move["position"][1])
+        c = relative_move["position"][0]
+
+        encoded_action[0, 7 - (l - 1), self.collumn_mapping[c] - 1, index_frame] = 1
+
+        return encoded_action
 
     def check_win(self, state, action):
         state = self.get_next_state(state, action)
         return chess.Board(state).is_checkmate()
+    
+
         
 
     def get_value_and_terminated(self, state, action, previous_state=False):
     
         if previous_state and action is not None:
             state = self.get_next_state(state, action)
-            
-        board_state = chess.Board(state)
+        
+        if isinstance(state, chess.Board):
+            board_state = state
+        else:
+            board_state = chess.Board(state)
 
         if board_state.is_checkmate():
             return 1, True
         
-        if board_state.is_stalemate():
+        if board_state.is_game_over(claim_draw=True):
             return 0, True
-        
+
         return 0, False
 
     def get_opponent(self, player):

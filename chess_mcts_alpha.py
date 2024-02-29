@@ -5,7 +5,7 @@ import time
 from chess_game import ChessGame
 from model import ResNet
 import copy
-from multiprocessing import Process
+from multiprocessing import Process, Pool
 import multiprocessing
 
 
@@ -16,152 +16,179 @@ class MCTSParallel:
         self.model = model
 
     @torch.no_grad()
-    def search(self, states, spGames):
+    def search(self, spGames):
         st = time.time()
+
+        states = np.stack([spg.state for spg in spGames])
         policy, value = self.model(
-                    torch.tensor(
-                        np.array([self.game.get_encoded_state(state).squeeze(0) for state in states]), # I love python :) 
-                        device=self.model.device,
-                        dtype=torch.float32
-                                 )
-                )
+            torch.tensor(
+                np.array(
+                    [
+                        self.game.get_encoded_state(spg.state).squeeze(0)
+                        for spg in spGames
+                    ]
+                ),  # I love python :)
+                device=self.model.device,
+                dtype=torch.float32,
+            )
+        )
         policy = torch.softmax(policy, axis=1).cpu().numpy()
-        print(f"Inference time: {time.time() - st}")
-        st = time.time()
-        policy = (1 - self.args["dirichlet_epsilon"]) * policy + self.args["dirichlet_epsilon"] \
-            * np.random.dirichlet(alpha=self.args["dirichlet_alpha"] * np.ones(8*8*73)).reshape((-1, 8, 8, 73))
+        # print(f"Inference time: {time.time() - st}")
+        # st = time.time()
+        policy = (1 - self.args["dirichlet_epsilon"]) * policy + self.args[
+            "dirichlet_epsilon"
+        ] * np.random.dirichlet(
+            alpha=self.args["dirichlet_alpha"] * np.ones(8 * 8 * 73)
+        ).reshape(
+            (-1, 8, 8, 73)
+        )
 
         for i, spg in enumerate(spGames):
             spg_policy = policy[i]
-            
+
             valid_moves = self.game.get_valid_moves(states[i]).squeeze(0)
             spg_policy *= valid_moves
             spg_policy /= np.sum(spg_policy)
 
-            spg.root = Node(self.game, self.args, states[i], visit_count = 1)
+            spg.root = Node(self.game, self.args, states[i], visit_count=1)
 
             spg.root.expand(spg_policy)
         # print("Roots Expanded!")
-        print(f"Expand roots time: {time.time() - st}")
+        # print(f"Expand roots time: {time.time() - st}")
 
-        for search in range(self.args['num_searches']):
+        for search in range(self.args["num_searches"]):
             st_total = time.time()
             st = time.time()
             for spg in spGames:
                 spg.node = None
-                node = spg.root 
+                node = spg.root
                 node: Node
 
                 while node.is_fully_expanded():
                     node = node.select()
 
-                value, is_terminated = self.game.get_value_and_terminated(node.state, node.action_taken)
+                value, is_terminated = self.game.get_value_and_terminated(
+                    node.board_state, node.action_taken
+                )
                 value = self.game.get_opponent_value(value)
 
-                if is_terminated:    
+                if is_terminated:
                     node.backpropagate(value)
                 else:
                     spg.node = node
 
-            print(f"Expand all games time: {time.time() - st}")
-            st = time.time()
-            expandable_spGames = [mappingIdx for mappingIdx in range(len(spGames)) if spGames[mappingIdx].node is not None]
-            
-            print(f"Check expandable games time: {time.time() - st}")
-            st = time.time()
+            # print(f"Expand all games time: {time.time() - st}")
+            # st = time.time()
+            expandable_spGames = [
+                mappingIdx
+                for mappingIdx in range(len(spGames))
+                if spGames[mappingIdx].node is not None
+            ]
+
+            # print(f"Check expandable games time: {time.time() - st}")
+            # st = time.time()
 
             if len(expandable_spGames) > 0:
-                states = np.stack([spGames[mappingIdx].node.state for mappingIdx in expandable_spGames])
+                states = np.stack(
+                    [
+                        spGames[mappingIdx].node.state
+                        for mappingIdx in expandable_spGames
+                    ]
+                )
                 policy, value = self.model(
                     torch.tensor(
-                        np.array([self.game.get_encoded_state(state).squeeze(0) for state in states]), 
+                        np.array(
+                            [
+                                self.game.get_encoded_state(state).squeeze(0)
+                                for state in states
+                            ]
+                        ),
                         device=self.model.device,
-                        dtype=torch.float32
-                                 )
+                        dtype=torch.float32,
+                    )
                 )
                 policy = torch.softmax(policy, axis=1).cpu().numpy()
                 value = value.detach().cpu().numpy()
 
-            print(f"Inference time: {time.time() - st}")
-            st = time.time()
-            manager = multiprocessing.Manager()
-            manager_dict = manager.dict()
+            # print(f"Inference time: {time.time() - st}")
+            # st = time.time()
 
-            processes = []
-            num_processess = 10
-            delta_idx = len(expandable_spGames) // num_processess
-            st_idx = 0
-            for i in range(1, num_processess + 1):
-                end_idx = st_idx + delta_idx
-                if end_idx > len(expandable_spGames): end_idx == len(expandable_spGames)
-                
-                nodes = [spGames[mappingIdx].node for mappingIdx in expandable_spGames[st_idx:end_idx]]
-                manager_dict[f"proc_{i}"] = nodes
-                processes.append(Process(
-                    target=self.parallel_expand_games, 
-                    args=(manager_dict, policy[st_idx:end_idx], value[st_idx:end_idx], i)))
-                processes[-1].start()
-                st_idx += delta_idx
+            # processes = []
+            # num_processess = 10
+            # delta_idx = len(expandable_spGames) // num_processess
+            # st_idx = 0
+            # for i in range(1, num_processess + 1):
+            #     end_idx = st_idx + delta_idx
+            #     if end_idx > len(expandable_spGames): end_idx == len(expandable_spGames)
 
-            for thread in processes:
-                thread.join()
+            #     processes.append(Process(
+            #         target=self.parallel_expand_games,
+            #         args=(expandable_spGames[st_idx:end_idx], spGames,policy[st_idx:end_idx], value[st_idx:end_idx], i)))
+            #     processes[-1].start()
+            #     st_idx += delta_idx
 
-            st_sort = time.time()
-            st_idx = 0
-            for i in range(1, num_processess + 1):
-                end_idx = st_idx + delta_idx
-                if end_idx > len(expandable_spGames): end_idx == len(expandable_spGames)
-                for j, mappingIdx in enumerate(expandable_spGames[st_idx:end_idx]):
-                    spGames[mappingIdx].node = manager_dict[f"proc_{i}"][j]
+            # for thread in processes:
+            #     thread.join()
 
-                st_idx += delta_idx
+            # st_sort = time.time()
+            # st_idx = 0
+            # for i in range(1, num_processess + 1):
+            #     end_idx = st_idx + delta_idx
+            #     if end_idx > len(expandable_spGames): end_idx == len(expandable_spGames)
+            #     print(processes[i])
+            #     for j, mappingIdx in enumerate(expandable_spGames[st_idx:end_idx]):
+            #         spGames[mappingIdx].node = processes[i].value[j]
 
-            print(f"Sort threads time: {time.time() - st_sort}")
+            #     st_idx += delta_idx
+
+            # print(f"Sort threads time: {time.time() - st_sort}")
             # self.parallel_expand_games(expandable_spGames, spGames,policy, value)
-            # for i, mappingIdx in enumerate(expandable_spGames):
-            #     st2 = time.time()
-            #     node = spGames[mappingIdx].node
-            #     spg_policy = policy[i]
-            #     spg_value = value[i]
+            for i, mappingIdx in enumerate(expandable_spGames):
+                st2 = time.time()
+                node = spGames[mappingIdx].node
+                spg_policy = policy[i]
+                spg_value = value[i]
 
-            #     # print(f"Mapping time: {time.time() - st2}")
-            #     # st2 = time.time()
+                # print(f"Mapping time: {time.time() - st2}")
+                # st2 = time.time()
 
-            #     valid_moves = self.game.get_valid_moves(node.state).squeeze(0)
-                
-            #     # print(f"Get Valid moves time: {time.time() - st2}")
-            #     # st2 = time.time()
-                
-            #     spg_policy *= valid_moves
-            #     spg_policy /= np.sum(spg_policy)
+                valid_moves = self.game.get_valid_moves(node.state).squeeze(0)
 
-            #     # print(f"Filter Valid Moves time: {time.time() - st2}")
-            #     # st2 = time.time()
+                # print(f"Get Valid moves time: {time.time() - st2}")
+                # st2 = time.time()
 
-            #     spg_value = spg_value.item()
-                
-            #     node.expand(spg_policy)
+                spg_policy *= valid_moves
+                spg_policy /= np.sum(spg_policy)
 
-            #     # print(f"Expand time: {time.time() - st2}")
-            #     # st2 = time.time()
+                # print(f"Filter Valid Moves time: {time.time() - st2}")
+                # st2 = time.time()
 
-            #     node.backpropagate(spg_value)
+                spg_value = spg_value.item()
 
-            #     # print(f"Backpropagate time: {time.time() - st2}")
-            #     # st2 = time.time()
+                node.expand(spg_policy)
 
-            #     # print("==========================================================")
+                # print(f"Expand time: {time.time() - st2}")
+                # st2 = time.time()
 
-            print(f"Backpropagate all games time: {time.time() - st}")
-            st = time.time()
-            print(f"Total Time: {time.time() - st_total}")
-            print("-----------------------------------------------------------------")
+                node.backpropagate(spg_value)
 
+                # print(f"Backpropagate time: {time.time() - st2}")
+                # st2 = time.time()
 
-    def parallel_expand_games(self, manager_dict, policy, value, process_num):
-        for i, node in enumerate(manager_dict[f"proc_{process_num}"]):
+                # print("==========================================================")
+
+            # print(f"Backpropagate all games time: {time.time() - st}")
+            # st = time.time()
+            # print(f"Total Time: {time.time() - st_total}")
+            # print("-----------------------------------------------------------------")
+
+    def parallel_expand_games(
+        self, expandable_spGames, spGames, policy, value, process_num
+    ):
+        nodes = []
+        for i, mappingIdx in enumerate(expandable_spGames):
             st2 = time.time()
-
+            node = spGames[mappingIdx].node
             spg_policy = policy[i]
             spg_value = value[i]
 
@@ -169,16 +196,16 @@ class MCTSParallel:
             # st2 = time.time()
 
             valid_moves = self.game.get_valid_moves(node.state).squeeze(0)
-            
+
             # print(f"Get Valid moves time: {time.time() - st2}")
             # st2 = time.time()
-            
+
             spg_policy *= valid_moves
             spg_policy /= np.sum(spg_policy)
 
             # print(f"Filter Valid Moves time: {time.time() - st2}")
             # st2 = time.time()
-            
+
             node.expand(spg_policy)
 
             # print(f"Expand time: {time.time() - st2}")
@@ -186,11 +213,14 @@ class MCTSParallel:
 
             node.backpropagate(spg_value)
 
-            manager_dict[f"proc_{process_num}"][i] = node
+            nodes.append(node)
             # print(f"Backpropagate time: {time.time() - st2}")
             # st2 = time.time()
 
             # print("==========================================================")
+
+        return nodes
+
 
 class MCTS:
     def __init__(self, game: ChessGame, args, model) -> None:
@@ -200,44 +230,51 @@ class MCTS:
 
     @torch.no_grad()
     def search(self, state):
-        root = Node(self.game, self.args, state, visit_count = 1)
+        root = Node(self.game, self.args, state, visit_count=1)
 
         policy, value = self.model(
-                    torch.tensor(
-                        self.game.get_encoded_state(state), 
-                        device=self.model.device,
-                        dtype=torch.float32
-                                 )
-                )
+            torch.tensor(
+                self.game.get_encoded_state(state),
+                device=self.model.device,
+                dtype=torch.float32,
+            )
+        )
         policy = torch.softmax(policy, axis=1).squeeze(0).cpu().numpy()
-        
-        policy = (1 - self.args["dirichlet_epsilon"]) * policy + self.args["dirichlet_epsilon"] \
-            * np.random.dirichlet(alpha=self.args["dirichlet_alpha"] * np.ones(8*8*73)).reshape((8, 8, 73))
-        
+
+        policy = (1 - self.args["dirichlet_epsilon"]) * policy + self.args[
+            "dirichlet_epsilon"
+        ] * np.random.dirichlet(
+            alpha=self.args["dirichlet_alpha"] * np.ones(8 * 8 * 73)
+        ).reshape(
+            (8, 8, 73)
+        )
+
         valid_moves = self.game.get_valid_moves(state).squeeze(0)
-    
+
         policy *= valid_moves
         policy /= np.sum(policy)
 
         root.expand(policy)
 
-        for search in range(self.args['num_searches']):
-            print(f"search: {search}")
+        for search in range(self.args["num_searches"]):
+
             node = root
 
             while node.is_fully_expanded():
                 node = node.select()
 
-            value, is_terminated = self.game.get_value_and_terminated(node.state, node.action_taken)
+            value, is_terminated = self.game.get_value_and_terminated(
+                node.board_state, node.action_taken
+            )
             value = self.game.get_opponent_value(value)
-            
+
             if not is_terminated:
                 policy, value = self.model(
                     torch.tensor(
-                        self.game.get_encoded_state(node.state), 
+                        self.game.get_encoded_state(node.state),
                         device=self.model.device,
-                        dtype=torch.float32
-                                 )
+                        dtype=torch.float32,
+                    )
                 )
                 policy = torch.softmax(policy, axis=1).squeeze(0).cpu().numpy()
                 valid_moves = self.game.get_valid_moves(node.state).squeeze(0)
@@ -245,12 +282,11 @@ class MCTS:
                 policy /= np.sum(policy)
 
                 value = value.item()
-                
+
                 node.expand(policy)
 
             node.backpropagate(value)
-            
-            
+
         valid_actions = self.game.get_uci_valid_moves(state)
         action_probs = np.zeros(len(valid_actions))
         for child in root.children:
@@ -259,14 +295,32 @@ class MCTS:
         action_probs /= np.sum(action_probs)
         return valid_actions, action_probs
 
+
 class Node:
-    def __init__(self, game: ChessGame, args, state, parent=None, action_taken=None, prior=0, visit_count = 0) -> None:
+    def __init__(
+        self,
+        game: ChessGame,
+        args,
+        state,
+        parent=None,
+        action_taken=None,
+        prior=0,
+        visit_count=0,
+    ) -> None:
         self.game = game
         self.args = args
-        self.state = state
         self.parent = parent
         self.action_taken = action_taken
-        self.prior = prior 
+        self.prior = prior
+
+        if isinstance(state, str):
+            self.state = state
+        else:
+            self.state = game.get_fen(state)
+
+        self.board_state = game.get_board_state(state)
+
+        # self.expandable_moves = set(game.get_uci_valid_moves(state))
 
         self.children = []
 
@@ -287,33 +341,38 @@ class Node:
                 best_ucb = ucb
 
         return best_child
-    
+
     def get_ucb(self, child):
         # The next state is for our opponent, so we want to minimize the value of the next state
         if child.visit_count == 0:
             q_value = 0
         else:
             q_value = 1 - ((child.value_sum / child.visit_count) + 1) / 2
-        
-        return q_value +  child.prior * self.args["C"] * math.sqrt(self.visit_count / (1 + child.visit_count))
 
+        return q_value + child.prior * self.args["C"] * math.sqrt(
+            self.visit_count / (1 + child.visit_count)
+        )
 
-    def expand(self, policy): 
+    def expand(self, policy):
 
         all_policy = self.game.decode_all_actions(policy, self.state)
 
         for i, policy in enumerate(all_policy):
-            
+
             action = policy[0]
             prob = policy[1]
+
+            # if not (action in self.expandable_moves):
+            #     raise Exception(f"Action {action} not in {self.expandable_moves}. \n Legal moves {self.board_state.legal_moves} \n Board: \n {self.board_state}")
             
-            child_state = copy.deepcopy(self.state)
-            
+            # self.expandable_moves.remove(action)
+
+            child_state = copy.deepcopy(self.board_state)
+
             child_state = self.game.get_next_state(child_state, action)
-            
+
             child = Node(self.game, self.args, child_state, self, action, prob)
             self.children.append(child)
-
 
     def backpropagate(self, value):
         self.value_sum += value
@@ -322,5 +381,3 @@ class Node:
         value = self.game.get_opponent_value(value)
         if self.parent is not None:
             self.parent.backpropagate(value)
-
-
