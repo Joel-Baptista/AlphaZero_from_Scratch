@@ -1,6 +1,5 @@
 from chess_mcts_alpha import MCTSParallel
 from chess_mcts_alpha import MCTS as MCTSAlpha
-from mcts import MCTS
 from chess_game import ChessGame
 from model import ResNetChess
 import torch
@@ -135,14 +134,13 @@ class AlphaZeroParallel:
 
         mtcs_args = {
             "C": 1.41,
-            "num_searches": 5,
+            "num_searches": 300,
             "dirichlet_epsilon": 0.2,
             "dirichlet_alpha": 1.3,
         }
-
-        mcts = MCTS(self.game, {'C': 1.41, 'num_searches': 2000})
         mcts_alpha = MCTSAlpha(self.game, mtcs_args, self.model)
         alpha_wins = 0
+        alpa_draws = 0
         st = time.time()
         for i in range(1, 21):
             print(f"Start Game number {i}")
@@ -180,7 +178,8 @@ class AlphaZeroParallel:
                         if player == alpha_player: 
                             winner = "Alpha"
                             alpha_wins += 1
-
+                    elif value == 0:
+                        alpa_draws += 1
                         # print(winner, " won")
                     break
 
@@ -254,17 +253,17 @@ if __name__=="__main__":
 
     args = {
         "C": 3.5,
-        "num_searches": 5,
+        "num_searches": 100,
         "num_iterations": 8,
-        "num_selfPlay_iterations": 3,
-        "num_parallel_games": 3,
+        "num_selfPlay_iterations": 10,
+        "num_parallel_games": 10,
         "num_epochs": 8,
         "batch_size": 64,
         "temperature": 3,
         "dirichlet_epsilon": 0.8,
         "dirichlet_alpha": 1.3,
         "lr": 0.0001,
-        "weight_decay": 0.0001,
+        "weight_decay": 0.001,
         "num_resblocks": 7,
         "num_hidden": 256,  
     }

@@ -36,7 +36,7 @@ def main():
 
     mcts_aplha = MCTSAlpha(game, args, model)
 
-    stockfish = Stockfish(path="./stockfish/stockfish-ubuntu-x86-64-avx2", depth=18, parameters={"Threads": 2, "Minimum Thinking Time": 30})
+    stockfish = Stockfish(path="./stockfish/stockfish-ubuntu-x86-64-sse41-popcnt", depth=18, parameters={"Threads": 2, "Minimum Thinking Time": 30})
     r = random.random()
     if r > 0.5:
         alpha_player = 1

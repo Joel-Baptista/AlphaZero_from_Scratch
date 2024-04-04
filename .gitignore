@@ -1,0 +1,5 @@
+ 
+stockfish*
+__pycache__
+pygameChess
+wandb

@@ -7,6 +7,9 @@ from model import ResNetChess
 import torch
 from colorama import Fore
 import functools
+import time
+import ctypes
+import os
 
 class ChessGame:
     def __init__(self) -> None:
@@ -68,6 +71,10 @@ class ChessGame:
     def get_fen(self, state: chess.Board):
         
         return state.fen()
+    
+    def copy_board(self, state: chess.Board):
+        return chess.Board(fen=state.fen())
+
 
     def get_initial_state(self):
         return chess.Board().fen()
@@ -92,62 +99,206 @@ class ChessGame:
     # @functools.lru_cache(maxsize=10_000)
     def decode_all_actions(self, action: np.ndarray, state: list[str]):
 
+        st = time.time()
+        non_zero_idx = np.nonzero(action)
+        non_zero_values = action[non_zero_idx]
+        non_zero_coordinates = np.transpose(non_zero_idx)
+
+        # print(time.time()-st)
+        # print(non_zero_values)
+        # print(non_zero_coordinates)
+
         decoded_action = []
-        for i in range(action.shape[0]):
-            for j in range(action.shape[1]):
-                for k in range(action.shape[2]):
-                    probability = action[i, j, k]
-                    if probability > 0:
-                        move_idx = k
+        for idx, coordiantes in enumerate(non_zero_coordinates):
+            i, j ,k = coordiantes
+            move_idx = k
+
+            index_dir = move_idx // 7
+            if move_idx <= 55:
+                direction = self.encoded_action[move_idx // 7]
+            elif 56 <= move_idx <= 63:
+                direction = "Knights"
+                index_dir = 8
+            else:
+                direction = "Under"
+            
+            index_len = move_idx - index_dir * 7 + 1
+
+            c = j + 1
+            l = 8 - i
+
+            pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
+
+            if direction == "Knights":
+                knight_jump = self.reverse_knight_move_mapping[str(index_len)]
+                new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
+            elif direction == "N":
+                new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
+            elif direction == "S":
+                new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l - index_len}"
+            elif direction == "W":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l}"
+            elif direction == "E":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l}"
+            elif direction == "NE":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
+            elif direction == "NW":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
+            elif direction == "SW":
+                new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
+            elif direction == "SE":
+                new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
+            elif direction == "Under":
+                print(f"{Fore.YELLOW}Under Promotion is not yet implemented: move_idx is {move_idx}{Fore.RESET}")
+
+            promotion = ""
+            board_state = chess.Board(state)
+            piece = str.lower(str(board_state.piece_at(chess.parse_square(pos))))
+            if (int(new_pos[1]) == 8 or int(new_pos[1]) == 1) and piece == "p":
+                promotion = "q" #TODO Introduce underpromotions
+
+            decoded_action.append((f"{pos}{new_pos}{promotion}", non_zero_values[idx]))
+
+        # decoded_action = []
+        # for i in range(action.shape[0]):
+        #     for j in range(action.shape[1]):
+        #         for k in range(action.shape[2]):
+        #             probability = action[i, j, k]
+        #             if probability > 0:
+        #                 move_idx = k
 
 
-                        index_dir = move_idx // 7
-                        if move_idx <= 55:
-                            direction = self.encoded_action[move_idx // 7]
-                        elif 56 <= move_idx <= 63:
-                            direction = "Knights"
-                            index_dir = 8
-                        else:
-                            direction = "Under"
+        #                 index_dir = move_idx // 7
+        #                 if move_idx <= 55:
+        #                     direction = self.encoded_action[move_idx // 7]
+        #                 elif 56 <= move_idx <= 63:
+        #                     direction = "Knights"
+        #                     index_dir = 8
+        #                 else:
+        #                     direction = "Under"
                         
-                        index_len = move_idx - index_dir * 7 + 1
+        #                 index_len = move_idx - index_dir * 7 + 1
 
-                        c = j + 1
-                        l = 8 - i
+        #                 c = j + 1
+        #                 l = 8 - i
 
-                        pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
+        #                 pos = f"{self.reverse_collumn_mapping[str(c)]}{str(l)}"
 
-                        if direction == "Knights":
-                            knight_jump = self.reverse_knight_move_mapping[str(index_len)]
-                            new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
-                        elif direction == "N":
-                            new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
-                        elif direction == "S":
-                            new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l - index_len}"
-                        elif direction == "W":
-                            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l}"
-                        elif direction == "E":
-                            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l}"
-                        elif direction == "NE":
-                            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
-                        elif direction == "NW":
-                            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
-                        elif direction == "SW":
-                            new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
-                        elif direction == "SE":
-                            new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
-                        elif direction == "Under":
-                            print(f"{Fore.YELLOW}Under Promotion is not yet implemented: move_idx is {move_idx}{Fore.RESET}")
+        #                 if direction == "Knights":
+        #                     knight_jump = self.reverse_knight_move_mapping[str(index_len)]
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
+        #                 elif direction == "N":
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l + index_len}"
+        #                 elif direction == "S":
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c)]}{l - index_len}"
+        #                 elif direction == "W":
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l}"
+        #                 elif direction == "E":
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l}"
+        #                 elif direction == "NE":
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
+        #                 elif direction == "NW":
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
+        #                 elif direction == "SW":
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
+        #                 elif direction == "SE":
+        #                     new_pos = f"{self.reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
+        #                 elif direction == "Under":
+        #                     print(f"{Fore.YELLOW}Under Promotion is not yet implemented: move_idx is {move_idx}{Fore.RESET}")
 
-                        promotion = ""
-                        board_state = chess.Board(state)
-                        piece = str.lower(str(board_state.piece_at(chess.parse_square(pos))))
-                        if (int(new_pos[1]) == 8 or int(new_pos[1]) == 1) and piece == "p":
-                            promotion = "q" #TODO Introduce underpromotions
+        #                 promotion = ""
+        #                 board_state = chess.Board(state)
+        #                 piece = str.lower(str(board_state.piece_at(chess.parse_square(pos))))
+        #                 if (int(new_pos[1]) == 8 or int(new_pos[1]) == 1) and piece == "p":
+        #                     promotion = "q" #TODO Introduce underpromotions
 
-                        decoded_action.append((f"{pos}{new_pos}{promotion}", probability))
+        #                 decoded_action.append((f"{pos}{new_pos}{promotion}", probability))
 
         return decoded_action
+
+    def decode_all_actions_template(self, action: np.ndarray, state: list[str]):
+
+        reverse_collumn_mapping = {
+                                "1": "a",
+                                "2": "b" ,
+                                "3": "c",
+                                "4": "d",
+                                "5": "e",
+                                "6": "f" ,
+                                "7": "g",
+                                "8": "h",
+                                }
+
+        reverse_knight_move_mapping = {
+            "1": (1, 2) ,
+            "2": (-1, 2),
+            "3": (2, 1),
+            "4": (-2, 1) ,
+            "5": (-1, -2),
+            "6": (-2, -1),
+            "7": (1, -2),
+            "8": (2, -1),
+        } 
+        
+        encoded_action = ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "Knights", "Under"]
+
+        st = time.time()
+        non_zero_idx = np.nonzero(action)
+        non_zero_values = action[non_zero_idx]
+        non_zero_coordinates = np.transpose(non_zero_idx)
+
+        decoded_action = []
+        for idx, coordiantes in enumerate(non_zero_coordinates):
+            i, j ,k = coordiantes
+            move_idx = k
+
+            index_dir = move_idx // 7
+            if move_idx <= 55:
+                direction = encoded_action[move_idx // 7]
+            elif 56 <= move_idx <= 63:
+                direction = "Knights"
+                index_dir = 8
+            else:
+                direction = "Under"
+            
+            index_len = move_idx - index_dir * 7 + 1
+
+            c = j + 1
+            l = 8 - i
+
+            pos = f"{reverse_collumn_mapping[str(c)]}{str(l)}"
+
+            if direction == "Knights":
+                knight_jump = reverse_knight_move_mapping[str(index_len)]
+                new_pos = f"{reverse_collumn_mapping[str(c + knight_jump[0])]}{l + knight_jump[1]}"
+            elif direction == "N":
+                new_pos = f"{reverse_collumn_mapping[str(c)]}{l + index_len}"
+            elif direction == "S":
+                new_pos = f"{reverse_collumn_mapping[str(c)]}{l - index_len}"
+            elif direction == "W":
+                new_pos = f"{reverse_collumn_mapping[str(c - index_len)]}{l}"
+            elif direction == "E":
+                new_pos = f"{reverse_collumn_mapping[str(c + index_len)]}{l}"
+            elif direction == "NE":
+                new_pos = f"{reverse_collumn_mapping[str(c + index_len)]}{l + index_len}"
+            elif direction == "NW":
+                new_pos = f"{reverse_collumn_mapping[str(c - index_len)]}{l + index_len}"
+            elif direction == "SW":
+                new_pos = f"{reverse_collumn_mapping[str(c - index_len)]}{l - index_len}"
+            elif direction == "SE":
+                new_pos = f"{reverse_collumn_mapping[str(c + index_len)]}{l - index_len}"
+            elif direction == "Under":
+                print(f"{Fore.YELLOW}Under Promotion is not yet implemented: move_idx is {move_idx}{Fore.RESET}")
+
+            promotion = ""
+            board_state = chess.Board(state)
+            piece = str.lower(str(board_state.piece_at(chess.parse_square(pos))))
+            if (int(new_pos[1]) == 8 or int(new_pos[1]) == 1) and piece == "p":
+                promotion = "q" #TODO Introduce underpromotions
+
+            decoded_action.append((f"{pos}{new_pos}{promotion}", non_zero_values[idx]))
+        return decoded_action
+
 
     def decode_action(self, actions: np.ndarray, state: str | chess.Board):
         decoded_actions = []
