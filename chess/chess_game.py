@@ -1,15 +1,9 @@
 import numpy as np
 import chess
 import random
-import math
-import cv2 as cv
-from model import ResNetChess
-import torch
 from colorama import Fore
 import functools
 import time
-import ctypes
-import os
 
 class ChessGame:
     def __init__(self) -> None:
@@ -601,32 +595,32 @@ args = {
     "num_hidden": 1024,  
     }
 
-if __name__=="__main__":
-    game = ChessGame()
+# if __name__=="__main__":
+#     game = ChessGame()
 
-    model = ResNetChess(game, args["num_resblocks"], args["num_hidden"], "cpu")
-    state = game.get_initial_state()
-    print(state)
-    for i in range(0, 100):
-        print(state)
-        valid_moves = game.get_uci_valid_moves(state)
-        print(state)
-        # print(valid_moves)
-        # print(chess.Board(state))
-        encoded_state = game.get_encoded_state(state)
+#     model = ResNetChess(game, args["num_resblocks"], args["num_hidden"], "cpu")
+#     state = game.get_initial_state()
+#     print(state)
+#     for i in range(0, 100):
+#         print(state)
+#         valid_moves = game.get_uci_valid_moves(state)
+#         print(state)
+#         # print(valid_moves)
+#         # print(chess.Board(state))
+#         encoded_state = game.get_encoded_state(state)
 
-        policy, value = model(torch.Tensor(encoded_state))
-        policy = torch.softmax(policy, axis=1).detach().cpu().numpy()
-        valid_moves = game.get_valid_moves(state)
-        policy *= valid_moves
-        policy /= np.sum(policy)
+#         policy, value = model(torch.Tensor(encoded_state))
+#         policy = torch.softmax(policy, axis=1).detach().cpu().numpy()
+#         valid_moves = game.get_valid_moves(state)
+#         policy *= valid_moves
+#         policy /= np.sum(policy)
         
-        print(game.decode_action(policy))
+#         print(game.decode_action(policy))
         # print(encoded_state.shape)
         # encoded_actions = game.get_valid_moves(state)
         # decoded_action = game.decode_action(state, encoded_actions[0])
         # print(encoded_actions.shape)
-        break
+        # break
         # for i in range(0, 73):
         #     image = encoded_actions[0,:,:, i]
         #     print(np.shape(image))
@@ -637,10 +631,10 @@ if __name__=="__main__":
         #         break
         # if key == ord("q"):
         #         break
-        print("--------------------------------------")
-        move = random.choice(valid_moves)
-        relative_move = game.relative_movement(state, move)
-        game.get_valid_moves(state)
+        # print("--------------------------------------")
+        # move = random.choice(valid_moves)
+        # relative_move = game.relative_movement(state, move)
+        # game.get_valid_moves(state)
         # if chess.Board(state).has_legal_en_passant():
         #     for i in range(0, 19):
         #         image = encoded_state[0,:,:, i]
@@ -653,4 +647,4 @@ if __name__=="__main__":
         #     if key == ord("q"):
         #             break
 
-        state = game.get_next_state(state, move)
+        # state = game.get_next_state(state, move)

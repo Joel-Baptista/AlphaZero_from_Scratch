@@ -7,7 +7,7 @@ from model import ResNet
 import copy
 from multiprocessing import Process, Pool
 import multiprocessing
-
+import fast_chess
 
 LOG_TIME = False
 

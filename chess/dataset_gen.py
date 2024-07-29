@@ -4,11 +4,14 @@ from chess_game import ChessGame
 import numpy as np 
 import time
 import random
+from datetime import datetime
 
 
 def main():
-    stockfish = Stockfish(path="./stockfish_old/stockfish-ubuntu-x86-64-avx2", depth=10, parameters={"Threads": 2})
+    stockfish = Stockfish(path="./stockfish_old/stockfish-ubuntu-x86-64-avx2", depth=20, parameters={"Threads": 3})
     game = ChessGame()
+
+    dataset_name = datetime.now()
 
     data = []
     white = True
@@ -63,10 +66,10 @@ def main():
             white = not white
         n_games += 1
         print(f"Played {n_games} games")
-        if n_games % 10 == 0:
+        if n_games % 5 == 0:
             print("------------Saving checkpoint games----------")
             df = pd.DataFrame(data, columns=["state", "action", "value"])
-            df.to_csv('dataset.csv', index=False)
+            df.to_csv(f'dataset_{dataset_name}.csv', index=False)
 
     print(time.time() - st)
 
